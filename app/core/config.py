@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     asr_model_name: str = defaults.ASR_MODEL_NAME
     asr_device: str = defaults.ASR_DEVICE
     asr_compute_type: str = defaults.ASR_COMPUTE_TYPE
+    ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
     representative_frames_per_shot: int = defaults.REPRESENTATIVE_FRAMES_PER_SHOT
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
     job_timeout_seconds: int = defaults.JOB_TIMEOUT_SECONDS

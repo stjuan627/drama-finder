@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.base import JobStage, JobStatus
 from app.models.episode import Episode
 from app.models.frame import Frame
@@ -26,6 +27,7 @@ from app.services.scene_detection import ShotDetectionService
 from app.services.storage import StorageService
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class IngestService:
@@ -117,21 +119,33 @@ class IngestPipeline:
             scenes_path = paths.artifacts / "scenes.json"
 
             self._update_stage(db, job, JobStage.AUDIO_EXTRACTION, 1)
-            self.ffmpeg_service.extract_audio(video_path, audio_path)
+            if not audio_path.exists():
+                self.ffmpeg_service.extract_audio(video_path, audio_path)
 
             self._update_stage(db, job, JobStage.ASR, 2)
-            asr_segments = self.asr_service.transcribe(audio_path)
-            asr_path.write_text(
-                json.dumps(asr_segments, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            if asr_path.exists():
+                asr_segments = self._load_json(asr_path)
+            else:
+                asr_segments = self.asr_service.transcribe(audio_path)
+                asr_path.write_text(
+                    json.dumps(asr_segments, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
 
             self._update_stage(db, job, JobStage.SHOT_DETECTION, 3)
-            shots = self.shot_service.detect_shots(video_path)
-            shots_path.write_text(json.dumps(shots, ensure_ascii=False, indent=2), encoding="utf-8")
+            if shots_path.exists():
+                shots = self._load_json(shots_path)
+            else:
+                shots = self.shot_service.detect_shots(video_path)
+                shots_path.write_text(
+                    json.dumps(shots, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
 
             self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 4)
-            frame_paths = self.ffmpeg_service.extract_frames(video_path, paths.frames)
+            frame_paths = sorted(paths.frames.glob("frame_*.jpg"))
+            if not frame_paths:
+                frame_paths = self.ffmpeg_service.extract_frames(video_path, paths.frames)
 
             self._update_stage(db, job, JobStage.REPRESENTATIVE_FRAMES, 5)
             shots = self._attach_representative_frames(shots, frame_paths)
@@ -237,10 +251,12 @@ class IngestPipeline:
                 for shot in scene_shots
                 for frame_path in shot.get("representative_frame_paths", [])
             ]
-            embedding = self.embedding_service.embed_multimodal(
-                text=f"{scene.get('summary', '')}\n{asr_text}".strip(),
-                image_paths=[Path(path) for path in frame_paths[:3]],
-            )
+            embedding = None
+            if not settings.ingest_skip_embeddings:
+                embedding = self.embedding_service.embed_multimodal(
+                    text=f"{scene.get('summary', '')}\n{asr_text}".strip(),
+                    image_paths=[Path(path) for path in frame_paths[:3]],
+                )
 
             model = Scene(
                 episode_pk=episode.id,
@@ -271,11 +287,13 @@ class IngestPipeline:
             frame_ts = float(index)
             scene = self._match_scene(frame_ts, scenes)
             context_text = self._collect_asr_text(asr_segments, frame_ts - 5, frame_ts + 5)
-            embedding = self.embedding_service.embed_multimodal(
-                text=context_text,
-                image_paths=[frame_path],
-                task_type="RETRIEVAL_DOCUMENT",
-            )
+            embedding = None
+            if not settings.ingest_skip_embeddings:
+                embedding = self.embedding_service.embed_multimodal(
+                    text=context_text,
+                    image_paths=[frame_path],
+                    task_type="RETRIEVAL_DOCUMENT",
+                )
             db.add(
                 Frame(
                     episode_pk=episode.id,
@@ -306,3 +324,10 @@ class IngestPipeline:
             if scene.start_ts <= frame_ts <= scene.end_ts:
                 return scene
         return None
+
+    @staticmethod
+    def _load_json(path: Path) -> list[dict]:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError(f"expected list payload in {path}, got {type(payload).__name__}")
+        return payload

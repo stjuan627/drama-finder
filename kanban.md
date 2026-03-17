@@ -16,9 +16,9 @@
   - `.venv/bin/pytest -q` 通过，当前 `2 passed`
   - FastAPI `/healthz` smoke test 返回 `200`
 - 当前主要技术债：
-  - 首个真实剧集入库仍在推进中，`K-022` 尚未完成
+  - 真实入库当前以“跳过 embedding 生成”的模式先完成闭环，后续需在 `K-023` 恢复并优化 embedding 生成
   - 仓库仍有少量旧残留目录和缓存目录，需要继续收口
-  - Gemini scene merge 与 embedding 还没进入真实线上调用阶段
+  - Gemini scene merge 已进入真实线上调用，但 embedding 仍待单独推进
   - 当前真实入库先按 `faster-whisper small` 验证链路，不以最终 ASR 精度为准
 
 ## DONE
@@ -113,7 +113,7 @@
 ## TODO
 
 ### K-022 入库任务端到端跑通一集
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`
 - 优先级：最高
 - 写入范围：`app/services/ingest.py`、`app/services/media.py`、`app/services/asr.py`、`app/services/scene_detection.py`、`app/workers/`
 - 依赖：K-020、K-021
@@ -124,6 +124,10 @@
   - `POST /ingest/episode` 可提交任务
   - worker 能处理到 `completed`
   - `data/series/<series_id>/<episode_id>/` 下产物完整
+  - 已验证：
+    - `wufulinmen / ep01`
+    - 最终成功任务：`05ca9214-a11e-4f37-b4d6-1391fb82048f`
+    - 落库结果：`shots=885 / scenes=885 / frames=3030`
 
 ### K-023 Scene 合并与 Gemini 接入实测
 - 状态：`TODO`
@@ -175,12 +179,12 @@
 ## BLOCKED
 
 ### K-030 真实数据验证
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`
 - 当前输入：
   - `data/series/wufulinmen/manifest.yml`
   - `data/series/wufulinmen/01.mp4` 到 `05.mp4`
 - 当前进展：
-  - `ep01` 已成功进入真实入库执行
+  - `ep01` 已完成真实入库闭环
 
 ### K-031 Gemini 线上验证
 - 状态：`TODO`

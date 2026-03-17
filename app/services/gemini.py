@@ -64,7 +64,10 @@ class GeminiEmbeddingService:
         client = self._factory.build()
         from google.genai import types
 
-        parts: list[Any] = [text]
+        parts: list[Any] = []
+        cleaned_text = text.strip()
+        if cleaned_text:
+            parts.append(cleaned_text)
         for image_path in image_paths:
             mime_type = (
                 "image/jpeg"
@@ -72,6 +75,9 @@ class GeminiEmbeddingService:
                 else "image/png"
             )
             parts.append(types.Part.from_bytes(data=image_path.read_bytes(), mime_type=mime_type))
+
+        if not parts:
+            parts.append("empty scene")
 
         response = client.models.embed_content(
             model=settings.gemini_embedding_model,
@@ -100,16 +106,7 @@ class SceneMergeService:
             client = self._factory.build()
             from google.genai import types
         except Exception:
-            return [
-                {
-                    "scene_index": shot["shot_index"],
-                    "start": shot["start"],
-                    "end": shot["end"],
-                    "summary": "",
-                    "shot_indexes": [shot["shot_index"]],
-                }
-                for shot in shots
-            ]
+            return self._fallback_scenes(shots)
 
         prompt = {
             "instruction": (
@@ -124,4 +121,20 @@ class SceneMergeService:
             contents=str(prompt),
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
-        return response.parsed
+        parsed = getattr(response, "parsed", None)
+        if not isinstance(parsed, list) or not parsed:
+            return self._fallback_scenes(shots)
+        return parsed
+
+    @staticmethod
+    def _fallback_scenes(shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "scene_index": shot["shot_index"],
+                "start": shot["start"],
+                "end": shot["end"],
+                "summary": "",
+                "shot_indexes": [shot["shot_index"]],
+            }
+            for shot in shots
+        ]
