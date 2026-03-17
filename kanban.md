@@ -21,6 +21,7 @@
   - 需要引入片头片尾裁剪
   - 需要取消全库 `1fps` 主索引思路
   - 需要把 embedding 生成从阻塞式入库改成 segment 级后处理
+  - 已确认 shot 质检可接受，后续应围绕 `first/mid` 双图继续收敛
 
 ## DONE
 
@@ -98,7 +99,7 @@
 - 优先级：高
 - 写入范围：`app/services/ingest.py`、`docs/specs/schema-spec.md`、`docs/specs/ingest-pipeline-spec.md`
 - 目标：
-  - 每个 shot 保存 `start/mid/end` 代表图
+  - 每个 shot 默认保存 `first/mid` 代表图
   - 多个连续 shot 合并为 `5s - 15s` 的 segment
 - 完成定义：
   - 代表图和时间区间可用于人工质检

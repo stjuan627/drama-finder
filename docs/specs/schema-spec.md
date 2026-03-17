@@ -45,9 +45,8 @@
   - `shot_index int not null`
   - `start_ts float not null`
   - `end_ts float not null`
-  - `start_frame_path text not null`
+  - `first_frame_path text not null`
   - `mid_frame_path text not null`
-  - `end_frame_path text not null`
   - `asr_text text not null`
   - `raw_metadata jsonb not null`
 

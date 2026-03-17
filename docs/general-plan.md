@@ -11,7 +11,7 @@
 1. 入库与切分
 - 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> 片头片尾识别与裁剪 -> shot detection -> shot 代表图生成 -> segment 合并 -> 可选 scene summary -> 可选 embedding -> 写库`。
 - `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
-- 每个 `shot` 固定保存 `start / mid / end` 三张代表图，用于质检、人工确认和后续合并。
+- 每个 `shot` 默认保存 `first / mid` 两张代表图，用于质检、人工确认和后续合并。
 - `segment` 由相邻 `shot` 合并得到，目标是保证：
   - 语义连续
   - 时长可读
@@ -37,7 +37,7 @@
 - 默认不再全库维护 `1fps frame embedding`。
 - 默认优先做：
   - `segment embedding`
-  - `shot 代表图`
+  - `shot first/mid 代表图`
   - `ASR 文本`
 - embedding 生成与入库主流程解耦，允许先完成入库，再做后处理批量生成。
 - 当前为尽快验证真实链路，允许本地启用 `INGEST_SKIP_EMBEDDINGS=true`；正式检索前再恢复 segment 级 embedding。
@@ -53,9 +53,8 @@
 - `shots` 保存：
   - `start_ts`
   - `end_ts`
-  - `start_frame_path`
+  - `first_frame_path`
   - `mid_frame_path`
-  - `end_frame_path`
   - `asr_text`
 - `segments` 保存：
   - `start_ts`
@@ -88,6 +87,8 @@
 
 ## 当前实现与目标差异
 - 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，但仍是过渡状态。
+- 已人工验证 `ep01` 的 shot 质检结果，当前切分质量可接受。
+- 当前经验结论是：大多数 shot 用 `first + mid` 两张图已经足够表达画面连续性。
 - 当前真实产物里：
   - `shots` 可用
   - `frames` 仍然存在，属于历史过渡设计

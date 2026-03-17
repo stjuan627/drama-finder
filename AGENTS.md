@@ -16,6 +16,7 @@
   - `shot` 负责底层切分事实
   - `segment` 负责主召回和主返回
   - 全库不默认维护 `1fps frame` 主索引
+  - `shot` 默认只保留 `first/mid` 两张代表图用于主流程
 
 ## 事实来源与输入约定
 - 剧集基础元数据不能依赖文件名自动猜测。
@@ -43,7 +44,7 @@
   4. 本地 ASR
   5. 本地片头片尾检测与裁剪
   6. `PySceneDetect` 切 shot
-  7. 生成 `shot start/mid/end` 代表图
+  7. 生成 `shot first/mid` 代表图
   8. 合并 `segment`
   9. `Gemini 3 Flash` 可选生成 segment 摘要
   10. `gemini-embedding-2-preview` 可选生成 segment embedding
@@ -86,6 +87,7 @@
 ## 验收标准
 - 单集视频能稳定入库并生成可查询的 `shot` 和 `segment` 记录。
 - 查询结果能返回 `top1` 与 `top3` 区间候选。
+- `shot` 级质检默认以 `first/mid` 两张图为准，`end` 图不再作为主设计必需项。
 - 主方案与历史高密度 frame 基线可对照评测，但 frame 基线不再是主架构。
 - 整季评测目标：
   - `Top1 命中正确 segment >= 70%`

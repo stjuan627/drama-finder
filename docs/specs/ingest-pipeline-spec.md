@@ -32,7 +32,7 @@
   - 优先使用 `PySceneDetect`
   - 输出：`artifacts/shots.json`
 6. `shot_keyframes`
-  - 每个 shot 生成 `start / mid / end` 代表图
+  - 每个 shot 默认生成 `first / mid` 代表图
   - 用于人工质检、segment 表示与检索证据
 7. `segment_build`
   - 将连续 shot 合并为 `5s - 15s` 的可信区间
@@ -51,6 +51,7 @@
 - `frames/` 可继续保留为调试或局部回扫辅助，但不再作为主检索层。
 - `segment` 目标是可读区间，不是尽量短的镜头切片。
 - 片头片尾必须在正式检索库中被裁掉或显式标记为可忽略。
+- 已人工验证当前 shot 切分质量可接受，默认代表图策略固定为 `first + mid`。
 
 ## 当前实现说明
 - 当前代码已真实产出 `shots/scenes/frames`，属于过渡结果。
