@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     scene_top_k: int = defaults.SCENE_TOP_K
     frame_top_k: int = defaults.FRAME_TOP_K
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
+    asr_model_name: str = defaults.ASR_MODEL_NAME
+    asr_device: str = defaults.ASR_DEVICE
+    asr_compute_type: str = defaults.ASR_COMPUTE_TYPE
     representative_frames_per_shot: int = defaults.REPRESENTATIVE_FRAMES_PER_SHOT
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
     job_timeout_seconds: int = defaults.JOB_TIMEOUT_SECONDS

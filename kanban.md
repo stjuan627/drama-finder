@@ -19,6 +19,7 @@
   - 首个真实剧集入库仍在推进中，`K-022` 尚未完成
   - 仓库仍有少量旧残留目录和缓存目录，需要继续收口
   - Gemini scene merge 与 embedding 还没进入真实线上调用阶段
+  - 当前真实入库先按 `faster-whisper small` 验证链路，不以最终 ASR 精度为准
 
 ## DONE
 

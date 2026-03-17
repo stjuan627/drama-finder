@@ -16,7 +16,7 @@
 - `gemini_embedding_model = gemini-embedding-2-preview`
 - `gemini_scene_model = gemini-3-flash-preview`
 - `embedding_dimensions = 3072`
-- `asr_model_name = large-v3`
+- `asr_model_name = small`
 - `asr_device = auto`
 - `asr_compute_type = int8`
 
