@@ -68,7 +68,7 @@
   - `matched_start_ts`
   - `matched_end_ts`
   - `score`
-  - `evidence_frames`
+  - `evidence_images`
   - `evidence_text`
 
 ## 测试与验收
@@ -86,11 +86,11 @@
   - 返回区间覆盖人工标注剧情片段
 
 ## 当前实现与目标差异
-- 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，但仍是过渡状态。
+- 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，并已切换到 `shot/segment` 主链路。
 - 已人工验证 `ep01` 的 shot 质检结果，当前切分质量可接受。
 - 当前经验结论是：大多数 shot 用 `first + mid` 两张图已经足够表达画面连续性。
 - 当前真实产物里：
   - `shots` 可用
-  - `frames` 仍然存在，属于历史过渡设计
-  - `scenes` 当前仍可能退化为 `1 shot = 1 scene`
-- 后续开发应优先把当前 `scene/frame` 过渡实现迁移到 `shot/segment` 正式结构，不再扩大 `frame` 的责任边界。
+  - `segments` 已作为主检索与主返回单位
+  - `frames` 仍然存在，但已降级为历史兼容/调试结构
+- 后续开发应继续围绕 `shot/segment` 收敛，不再扩大 `frame` 的责任边界。

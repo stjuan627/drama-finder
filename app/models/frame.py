@@ -39,4 +39,4 @@ class Frame(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     episode = relationship("Episode", back_populates="frames")
     shot = relationship("Shot", back_populates="frames")
-    scene = relationship("Scene", back_populates="frames")
+    segment = relationship("Segment", back_populates="frames")

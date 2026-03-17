@@ -45,10 +45,11 @@
   - `shot_index int not null`
   - `start_ts float not null`
   - `end_ts float not null`
-  - `first_frame_path text not null`
-  - `mid_frame_path text not null`
-  - `asr_text text not null`
+  - `representative_frame_paths jsonb not null`
   - `raw_metadata jsonb not null`
+- 说明：
+  - 当前实现默认写入 `first + mid` 两张代表图
+  - `shot` 对应的 `asr_text` 当前保存在 `raw_metadata.asr_text`
 
 ## segments
 - 主键：`id uuid`
@@ -83,5 +84,5 @@
 - `ingest_jobs` 保留历史记录，不覆盖历史任务行
 
 ## 当前实现说明
-- 当前代码仍然存在 `scenes` 与 `frames` 历史表。
-- 后续开发应优先向 `segments` 迁移，不再扩大 `frames` 的责任范围。
+- 当前代码中的 `Segment` 模型兼容映射到历史 `scenes` 表。
+- `frames` 仍然存在于 schema 中，但不再参与默认主检索链路。

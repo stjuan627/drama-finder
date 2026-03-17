@@ -38,5 +38,5 @@
 - `ingest_jobs` 可将 `shot_count / segment_count / frame_count` 记录到 `artifacts`。
 
 ## 当前实现说明
-- 当前代码阶段枚举仍保留 `frame_extraction / representative_frames / scene_merge` 等旧命名。
-- 后续实现应逐步迁移到本文件描述的 `segment` 阶段语义。
+- 当前数据库阶段枚举仍保留历史值，但代码层已使用 `shot_keyframes / segment_build` 别名语义。
+- 后续如需要清理历史命名，应通过显式迁移完成枚举值收口。

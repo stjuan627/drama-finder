@@ -36,5 +36,5 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     series = relationship("Series", back_populates="episodes")
     ingest_jobs = relationship("IngestJob", back_populates="episode")
     shots = relationship("Shot", back_populates="episode", cascade="all, delete-orphan")
-    scenes = relationship("Scene", back_populates="episode", cascade="all, delete-orphan")
+    segments = relationship("Segment", back_populates="episode", cascade="all, delete-orphan")
     frames = relationship("Frame", back_populates="episode", cascade="all, delete-orphan")

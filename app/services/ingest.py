@@ -14,12 +14,12 @@ from app.models.base import JobStage, JobStatus
 from app.models.episode import Episode
 from app.models.frame import Frame
 from app.models.ingest_job import IngestJob
-from app.models.scene import Scene
+from app.models.segment import Segment
 from app.models.series import Series
 from app.models.shot import Shot
 from app.schemas.ingest import IngestEpisodeRequest
 from app.services.asr import ASRService
-from app.services.gemini import GeminiEmbeddingService, SceneMergeService
+from app.services.gemini import GeminiEmbeddingService, SegmentBuildService
 from app.services.manifest import ManifestError, ManifestService
 from app.services.media import FFmpegService
 from app.services.queue import QueueService
@@ -60,7 +60,7 @@ class IngestService:
             status=JobStatus.QUEUED,
             current_stage=JobStage.MANIFEST,
             progress_current=0,
-            progress_total=9,
+            progress_total=8,
             attempt=1 if existing is None else existing.attempt + 1,
             artifacts={},
         )
@@ -83,7 +83,7 @@ class IngestPipeline:
         self.ffmpeg_service = FFmpegService()
         self.asr_service = ASRService()
         self.shot_service = ShotDetectionService()
-        self.scene_merge_service = SceneMergeService()
+        self.segment_build_service = SegmentBuildService()
         self.embedding_service = GeminiEmbeddingService()
 
     def run(self, db: Session, job_id: UUID | str) -> IngestJob:
@@ -116,7 +116,7 @@ class IngestPipeline:
             audio_path = paths.audio / "audio.wav"
             asr_path = paths.artifacts / "asr_segments.json"
             shots_path = paths.artifacts / "shots.json"
-            scenes_path = paths.artifacts / "scenes.json"
+            segments_path = paths.artifacts / "segments.json"
 
             self._update_stage(db, job, JobStage.AUDIO_EXTRACTION, 1)
             if not audio_path.exists():
@@ -142,27 +142,21 @@ class IngestPipeline:
                     encoding="utf-8",
                 )
 
-            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 4)
-            frame_paths = sorted(paths.frames.glob("frame_*.jpg"))
-            if not frame_paths:
-                frame_paths = self.ffmpeg_service.extract_frames(video_path, paths.frames)
+            self._update_stage(db, job, JobStage.SHOT_KEYFRAMES, 4)
+            shots = self._attach_representative_frames(video_path, paths.frames, shots)
 
-            self._update_stage(db, job, JobStage.REPRESENTATIVE_FRAMES, 5)
-            shots = self._attach_representative_frames(shots, frame_paths)
-
-            self._update_stage(db, job, JobStage.SCENE_MERGE, 6)
-            scenes = self.scene_merge_service.merge(shots, asr_segments)
-            scenes_path.write_text(
-                json.dumps(scenes, ensure_ascii=False, indent=2),
+            self._update_stage(db, job, JobStage.SEGMENT_BUILD, 5)
+            segments = self.segment_build_service.merge(shots, asr_segments)
+            segments_path.write_text(
+                json.dumps(segments, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
 
-            self._update_stage(db, job, JobStage.EMBEDDINGS, 7)
+            self._update_stage(db, job, JobStage.EMBEDDINGS, 6)
             self._replace_episode_artifacts(db, episode.id)
-            persisted_scenes = self._persist_scenes(db, episode, shots, scenes, asr_segments)
-            self._persist_frames(db, episode, frame_paths, persisted_scenes, asr_segments)
+            persisted_segments = self._persist_segments(db, episode, shots, segments, asr_segments)
 
-            self._update_stage(db, job, JobStage.PERSIST, 8)
+            self._update_stage(db, job, JobStage.PERSIST, 7)
             job.status = JobStatus.COMPLETED
             job.progress_current = job.progress_total
             job.finished_at = datetime.now(UTC)
@@ -171,9 +165,10 @@ class IngestPipeline:
                 "audio_path": str(audio_path),
                 "asr_segments_path": str(asr_path),
                 "shots_path": str(shots_path),
-                "scenes_path": str(scenes_path),
-                "frame_count": len(frame_paths),
-                "scene_count": len(persisted_scenes),
+                "segments_path": str(segments_path),
+                "shot_count": len(shots),
+                "segment_count": len(persisted_segments),
+                "frame_count": 0,
             }
             db.add(job)
             db.commit()
@@ -195,78 +190,95 @@ class IngestPipeline:
         db.add(job)
         db.commit()
 
-    @staticmethod
-    def _attach_representative_frames(shots: list[dict], frame_paths: list[Path]) -> list[dict]:
+    def _attach_representative_frames(
+        self,
+        video_path: Path,
+        frames_dir: Path,
+        shots: list[dict],
+    ) -> list[dict]:
         for shot in shots:
-            shot["representative_frame_paths"] = (
-                [str(frame_paths[min(shot["shot_index"], len(frame_paths) - 1)])]
-                if frame_paths
-                else []
-            )
+            start_ts = float(shot["start"])
+            end_ts = float(shot["end"])
+            mid_ts = start_ts if end_ts <= start_ts else start_ts + (end_ts - start_ts) / 2
+
+            timestamps = [("first", start_ts), ("mid", mid_ts)]
+            representative_paths: list[str] = []
+            for label, timestamp in timestamps[: settings.representative_frames_per_shot]:
+                output_path = frames_dir / f"shot_{shot['shot_index']:06d}_{label}.jpg"
+                if not output_path.exists():
+                    self.ffmpeg_service.extract_frame_at_timestamp(video_path, output_path, timestamp)
+                representative_paths.append(str(output_path))
+            shot["representative_frame_paths"] = representative_paths
         return shots
 
     @staticmethod
     def _replace_episode_artifacts(db: Session, episode_pk: UUID) -> None:
         db.execute(delete(Frame).where(Frame.episode_pk == episode_pk))
-        db.execute(delete(Scene).where(Scene.episode_pk == episode_pk))
+        db.execute(delete(Segment).where(Segment.episode_pk == episode_pk))
         db.execute(delete(Shot).where(Shot.episode_pk == episode_pk))
         db.commit()
 
-    def _persist_scenes(
+    def _persist_segments(
         self,
         db: Session,
         episode: Episode,
         shots: list[dict],
-        scenes: list[dict],
+        segments: list[dict],
         asr_segments: list[dict],
-    ) -> list[Scene]:
+    ) -> list[Segment]:
         shot_by_index = {shot["shot_index"]: shot for shot in shots}
-        persisted: list[Scene] = []
+        persisted: list[Segment] = []
 
         for shot in shots:
+            start_ts = float(shot["start"])
+            end_ts = float(shot["end"])
+            asr_text = self._collect_asr_text(asr_segments, start_ts, end_ts)
             db.add(
                 Shot(
                     episode_pk=episode.id,
                     shot_index=shot["shot_index"],
-                    start_ts=shot["start"],
-                    end_ts=shot["end"],
+                    start_ts=start_ts,
+                    end_ts=end_ts,
                     representative_frame_paths=shot.get("representative_frame_paths", []),
-                    raw_metadata=shot,
+                    raw_metadata={**shot, "asr_text": asr_text},
                 )
             )
         db.flush()
 
-        for scene in scenes:
-            scene_shots = [
+        for segment in segments:
+            segment_shots = [
                 shot_by_index[index]
-                for index in scene.get("shot_indexes", [])
+                for index in segment.get("shot_indexes", [])
                 if index in shot_by_index
             ]
-            if not scene_shots:
+            if not segment_shots:
                 continue
 
-            asr_text = self._collect_asr_text(asr_segments, scene["start"], scene["end"])
+            start_ts = float(segment["start"])
+            end_ts = float(segment["end"])
+            asr_text = self._collect_asr_text(asr_segments, start_ts, end_ts)
             frame_paths = [
                 frame_path
-                for shot in scene_shots
+                for shot in segment_shots
                 for frame_path in shot.get("representative_frame_paths", [])
             ]
+            unique_frame_paths = list(dict.fromkeys(frame_paths))
             embedding = None
             if not settings.ingest_skip_embeddings:
                 embedding = self.embedding_service.embed_multimodal(
-                    text=f"{scene.get('summary', '')}\n{asr_text}".strip(),
-                    image_paths=[Path(path) for path in frame_paths[:3]],
+                    text=f"{segment.get('summary', '')}\n{asr_text}".strip(),
+                    image_paths=[Path(path) for path in unique_frame_paths[:3]],
                 )
 
-            model = Scene(
+            model = Segment(
                 episode_pk=episode.id,
-                scene_index=scene["scene_index"],
-                start_ts=scene["start"],
-                end_ts=scene["end"],
-                summary=scene.get("summary", ""),
+                segment_index=int(segment["segment_index"]),
+                start_ts=start_ts,
+                end_ts=end_ts,
+                summary=segment.get("summary", ""),
                 asr_text=asr_text,
-                representative_frame_paths=frame_paths[:3],
-                raw_metadata=scene,
+                representative_frame_paths=unique_frame_paths[:3],
+                raw_metadata=segment,
                 embedding=embedding,
             )
             db.add(model)
@@ -274,40 +286,6 @@ class IngestPipeline:
 
         db.commit()
         return persisted
-
-    def _persist_frames(
-        self,
-        db: Session,
-        episode: Episode,
-        frame_paths: list[Path],
-        scenes: list[Scene],
-        asr_segments: list[dict],
-    ) -> None:
-        for index, frame_path in enumerate(frame_paths):
-            frame_ts = float(index)
-            scene = self._match_scene(frame_ts, scenes)
-            context_text = self._collect_asr_text(asr_segments, frame_ts - 5, frame_ts + 5)
-            embedding = None
-            if not settings.ingest_skip_embeddings:
-                embedding = self.embedding_service.embed_multimodal(
-                    text=context_text,
-                    image_paths=[frame_path],
-                    task_type="RETRIEVAL_DOCUMENT",
-                )
-            db.add(
-                Frame(
-                    episode_pk=episode.id,
-                    scene_pk=scene.id if scene else None,
-                    shot_pk=None,
-                    frame_index=index,
-                    frame_ts=frame_ts,
-                    image_path=str(frame_path),
-                    context_asr_text=context_text,
-                    raw_metadata={},
-                    embedding=embedding,
-                )
-            )
-        db.commit()
 
     @staticmethod
     def _collect_asr_text(asr_segments: list[dict], start_ts: float, end_ts: float) -> str:
@@ -317,13 +295,6 @@ class IngestPipeline:
                 continue
             fragments.append(segment["text"])
         return " ".join(fragment.strip() for fragment in fragments if fragment.strip())
-
-    @staticmethod
-    def _match_scene(frame_ts: float, scenes: list[Scene]) -> Scene | None:
-        for scene in scenes:
-            if scene.start_ts <= frame_ts <= scene.end_ts:
-                return scene
-        return None
 
     @staticmethod
     def _load_json(path: Path) -> list[dict]:

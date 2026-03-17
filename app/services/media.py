@@ -52,6 +52,28 @@ class FFmpegService:
         )
         return sorted(output_dir.glob("frame_*.jpg"))
 
+    def extract_frame_at_timestamp(self, video_path: Path, output_path: Path, timestamp: float) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            "ffmpeg",
+            "-y",
+            "-nostdin",
+            "-ss",
+            f"{max(timestamp, 0.0):.3f}",
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            str(output_path),
+        ]
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
+        return output_path
+
     def probe_duration(self, video_path: Path) -> float:
         command = [
             "ffprobe",

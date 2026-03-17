@@ -11,12 +11,11 @@ class SearchTextRequest(BaseModel):
 class SearchHit(BaseModel):
     series_id: str
     episode_id: str
-    matched_ts: float
-    scene_start_ts: float
-    scene_end_ts: float
+    matched_start_ts: float
+    matched_end_ts: float
     score: float
-    scene_summary: str | None
-    evidence_frames: list[str]
+    segment_summary: str | None
+    evidence_images: list[str]
     evidence_text: list[str]
 
 

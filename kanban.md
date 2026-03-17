@@ -70,7 +70,7 @@
 ## IN_PROGRESS
 
 ### K-023 方案迁移到 `shot/segment`
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`
 - 优先级：最高
 - 写入范围：`app/models/`、`app/services/ingest.py`、`app/services/retrieval.py`、`docs/`
 - 目标：
@@ -80,6 +80,10 @@
   - 有明确 `segment` 生成规则
   - 检索主单位改为 `segment`
   - 文档与代码不再强调全库 `1fps frame` 主索引
+ - 完成记录：
+  - 已引入 `Segment` 模型并兼容映射历史 `scenes` 表
+  - 入库链路改为 `shot -> representative frames -> segment -> persist`
+  - 检索主链改为直接召回 `segment` 并返回 `matched_start_ts / matched_end_ts`
 
 ### K-024 片头片尾裁剪
 - 状态：`IN_PROGRESS`

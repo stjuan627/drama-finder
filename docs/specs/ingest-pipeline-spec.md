@@ -54,5 +54,5 @@
 - 已人工验证当前 shot 切分质量可接受，默认代表图策略固定为 `first + mid`。
 
 ## 当前实现说明
-- 当前代码已真实产出 `shots/scenes/frames`，属于过渡结果。
-- 后续开发应优先把当前 `scene` 迁移为 `segment`，并把 `frame` 从主索引降级为辅助结构。
+- 当前代码已真实产出 `shots/segments`，并以 `segment` 作为主检索单位。
+- `frames` 目录仍用于保存 `shot` 代表图，不再表示全库 `1fps` 主索引。

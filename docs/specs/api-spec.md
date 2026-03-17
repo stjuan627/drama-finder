@@ -72,5 +72,5 @@
 - `evidence_text: string[]`
 
 ## 兼容说明
-- 现有代码仍保留 `matched_ts / scene_start_ts / scene_end_ts` 过渡结构。
-- 后续接口应迁移到区间字段为主，不再把单点时间戳作为主结果。
+- 当前接口已切换为 `matched_start_ts / matched_end_ts` 区间字段。
+- 存量数据库仍可能使用历史 `scenes` 表，但 API 层统一暴露 `segment` 语义。

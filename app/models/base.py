@@ -51,3 +51,7 @@ class JobStage(enum.StrEnum):
     SCENE_MERGE = "scene_merge"
     EMBEDDINGS = "embeddings"
     PERSIST = "persist"
+
+    # 兼容旧数据库枚举值，代码中优先使用新的 segment 语义别名。
+    SHOT_KEYFRAMES = "representative_frames"
+    SEGMENT_BUILD = "scene_merge"

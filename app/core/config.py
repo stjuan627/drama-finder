@@ -34,8 +34,9 @@ class Settings(BaseSettings):
     gemini_scene_model: str = defaults.GEMINI_SCENE_MODEL
     embedding_dimension: int = defaults.EMBEDDING_DIMENSION
 
-    scene_top_k: int = defaults.SCENE_TOP_K
-    frame_top_k: int = defaults.FRAME_TOP_K
+    segment_top_k: int = defaults.SEGMENT_TOP_K
+    segment_target_min_seconds: int = defaults.SEGMENT_TARGET_MIN_SECONDS
+    segment_target_max_seconds: int = defaults.SEGMENT_TARGET_MAX_SECONDS
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
     asr_model_name: str = defaults.ASR_MODEL_NAME
     asr_device: str = defaults.ASR_DEVICE
