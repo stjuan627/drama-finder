@@ -30,8 +30,6 @@ job_stage = sa.Enum(
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    job_status.create(op.get_bind(), checkfirst=True)
-    job_stage.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "series",
@@ -83,8 +81,16 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint("series_pk", "episode_id"),
-        sa.UniqueConstraint("series_pk", "episode_no"),
+        sa.UniqueConstraint(
+            "series_pk",
+            "episode_id",
+            name="uq_episodes_series_pk_episode_id",
+        ),
+        sa.UniqueConstraint(
+            "series_pk",
+            "episode_no",
+            name="uq_episodes_series_pk_episode_no",
+        ),
     )
     op.create_index("ix_episodes_series_pk", "episodes", ["series_pk"], unique=False)
 
@@ -256,6 +262,3 @@ def downgrade() -> None:
 
     op.drop_index("ix_series_series_id", table_name="series")
     op.drop_table("series")
-
-    job_stage.drop(op.get_bind(), checkfirst=True)
-    job_status.drop(op.get_bind(), checkfirst=True)

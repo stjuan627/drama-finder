@@ -12,8 +12,16 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "episodes"
     __table_args__ = (
-        UniqueConstraint("series_pk", "episode_id"),
-        UniqueConstraint("series_pk", "episode_no"),
+        UniqueConstraint(
+            "series_pk",
+            "episode_id",
+            name="uq_episodes_series_pk_episode_id",
+        ),
+        UniqueConstraint(
+            "series_pk",
+            "episode_no",
+            name="uq_episodes_series_pk_episode_no",
+        ),
     )
 
     series_pk: Mapped[uuid.UUID] = mapped_column(

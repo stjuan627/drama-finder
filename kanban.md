@@ -86,29 +86,24 @@
 ## IN_PROGRESS
 
 ### K-011 仓库结构收口
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：仓库根目录、`workers/`、`migrations/`、`alembic/`
 - 依赖：K-001、K-002
-- 当前问题：
-  - `alembic/` 和 `migrations/` 同时存在
-  - `compose.yaml` 和 `docker-compose.yml` 同时存在
-  - `app/workers/` 和根目录 `workers/` 同时存在
-  - 部分 `__pycache__`、egg-info、缓存目录已进入仓库工作区
+- 已解决项：
+  - 仅保留 `migrations/` 作为迁移真值
+  - 仅保留 `compose.yaml` 作为容器真值
+  - 仅保留 `app/workers/` 作为 worker 真值
 - 完成定义：
   - 基础设施目录只保留一套真值
   - 运行入口与文档引用一致
   - 无多余历史骨架混淆当前实现
 
 ### K-021 本地基础设施启动与迁移验证
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：`compose.yaml` 或统一后的容器文件、`README.md`
 - 依赖：K-010、K-011
-- 当前进展：
-  - Docker 可用
-  - `compose.yaml` 已作为唯一容器真值
-  - 首次 `docker compose up` 正在拉取 `pgvector/pgvector:pg17`
 - 完成定义：
   - 数据库可创建表
   - Redis 队列可连接
