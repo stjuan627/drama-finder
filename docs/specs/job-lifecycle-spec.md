@@ -6,19 +6,17 @@
 - `failed`
 - `completed`
 
-## 阶段枚举
-- `queued`
+## 目标阶段枚举
 - `manifest`
 - `audio_extraction`
 - `asr`
+- `intro_outro_trim`
 - `shot_detection`
-- `frame_extraction`
-- `representative_frames`
-- `scene_merge`
+- `shot_keyframes`
+- `segment_build`
+- `segment_summary`
 - `embeddings`
 - `persist`
-- `completed`
-- `failed`
 
 ## 生命周期
 1. `POST /ingest/episode` 创建任务，状态为 `queued`。
@@ -29,21 +27,16 @@
 
 ## 并发规则
 - 同一 `(series_pk, episode_pk)` 最近任务为 `queued/running` 时，不再新建重复任务。
-- 当前实现不支持 `force_reingest`。
 - worker 侧不做同 episode 并发锁；幂等覆盖依赖 API 层和人工控制。
 
 ## 错误处理
-- 入队失败：
-  - 直接抛错给 API
-  - 不在当前任务状态机内增加额外阶段枚举
-- pipeline 失败：
-  - `status = failed`
-  - `error_message = 异常消息`
 - 失败时保留中间产物，不自动回滚媒体文件。
+- Gemini 返回空结构时不允许直接中断任务，应优先回退到本地默认规则。
+- 正式方案中，embedding 失败不应迫使整条入库重跑；应允许拆成后处理任务。
 
 ## 计数字段
-- 当前实现不在 `ingest_jobs` 表中单独冗余 `shot_count/scene_count/frame_count`，产物统计写入 `artifacts`。
+- `ingest_jobs` 可将 `shot_count / segment_count / frame_count` 记录到 `artifacts`。
 
-## 时间字段
-- `started_at` 在 worker 真正开始时写入。
-- `finished_at` 在成功或失败时写入。
+## 当前实现说明
+- 当前代码阶段枚举仍保留 `frame_extraction / representative_frames / scene_merge` 等旧命名。
+- 后续实现应逐步迁移到本文件描述的 `segment` 阶段语义。

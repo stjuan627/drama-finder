@@ -1,9 +1,9 @@
 # API 规格
 
 ## 公共约定
-- API 前缀：`/api/v1`
-- 返回格式：JSON
+- API 返回 JSON
 - 当前不做鉴权
+- 当前目标输出是“可信区间”，不是秒级点位
 
 ## `GET /healthz`
 - 响应：
@@ -33,10 +33,7 @@
   - `file: image/*`
 - 成功响应：
   - `200`
-  - `SearchImageResponse`
-- 错误：
-  - `400` 非图片文件
-  - `400` 空文件
+  - `SearchResponse`
 
 ## `POST /search/text`
 - 请求体：
@@ -44,7 +41,7 @@
   - `limit: int = 3`
 - 成功响应：
   - `200`
-  - `SearchImageResponse`
+  - `SearchResponse`
 
 ## `IngestJobRead`
 - `id: uuid`
@@ -60,17 +57,20 @@
 - `finished_at: datetime | null`
 - `artifacts: object`
 
-## `SearchImageResponse`
+## `SearchResponse`
 - `hits: SearchHit[]`
 - `low_confidence: boolean`
 
 ## `SearchHit`
 - `series_id: string`
 - `episode_id: string`
-- `matched_ts: float`
-- `scene_start_ts: float | null`
-- `scene_end_ts: float | null`
+- `matched_start_ts: float`
+- `matched_end_ts: float`
 - `score: float`
-- `scene_summary: string | null`
-- `evidence_frames: string[]`
+- `segment_summary: string | null`
+- `evidence_images: string[]`
 - `evidence_text: string[]`
+
+## 兼容说明
+- 现有代码仍保留 `matched_ts / scene_start_ts / scene_end_ts` 过渡结构。
+- 后续接口应迁移到区间字段为主，不再把单点时间戳作为主结果。

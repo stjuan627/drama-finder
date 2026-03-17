@@ -1,78 +1,95 @@
-# 开发准备与模块拆分计划
+# 中文剧集片段定位系统 V1 方案
 
 ## 摘要
-- 当前方案已经足够进入开发准备，但不建议直接无拆分开工。
-- 第一阶段按 `Python + FastAPI + PostgreSQL + pgvector + Redis/RQ` 固定技术栈推进。
-- 入库采用 `API 提交任务 + 本地后台 worker 离线处理`，媒体文件与中间产物全部落在本地文件系统。
-- 剧集基础元数据不从文件名猜测，统一由 `manifest` 提供；文件命名约定只作为辅助校验，不作为唯一事实源。
+- 第一版目标从“秒级定位”调整为“可信区间定位”。
+- 目标体验是：输入截图或台词，返回 `剧集 + 时间区间`，例如 `ep01 00:30 - 00:40`。只要区间可信且命中正确剧情片段，即视为可接受。
+- 检索主单位从 `1fps frame` 改为 `segment`，由多个连续 `shot` 组成，默认长度控制在 `5s - 15s`。
+- `shot` 仍然是底层切分事实，`segment` 才是主检索、主存储、主返回单位。
+- 全库不再默认维护高密度 `1fps` 向量索引。全库只保留 `shot/segment` 级代表图与文本；局部高频扫描作为后续可选增强。
 
-## 模块拆分
-1. 项目骨架模块
-- 建立 `FastAPI + SQLAlchemy + Alembic + RQ worker` 的基础工程。
-- 配置 `Postgres`、`pgvector`、`Redis`、本地 `data/` 目录和 Gemini API 配置。
-- 提供健康检查、配置加载、日志和任务状态查询基础能力。
+## 核心设计
+1. 入库与切分
+- 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> 片头片尾识别与裁剪 -> shot detection -> shot 代表图生成 -> segment 合并 -> 可选 scene summary -> 可选 embedding -> 写库`。
+- `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
+- 每个 `shot` 固定保存 `start / mid / end` 三张代表图，用于质检、人工确认和后续合并。
+- `segment` 由相邻 `shot` 合并得到，目标是保证：
+  - 语义连续
+  - 时长可读
+  - 返回给用户时能作为“可信区间”
 
-2. 剧集清单与元数据模块
-- 为每部剧定义一个 `manifest.yaml` 或 `manifest.json`。
-- manifest 固定字段为：`series_id`、`series_title`、`season_label`、`language`、`video_root`、`episodes[]`。
-- `episodes[]` 每项固定字段为：`episode_id`、`episode_no`、`title`、`filename`。
-- 入库前先校验 manifest 与本地视频文件是否匹配；缺文件、重名、重复 episode_no 直接报错。
+2. 片头片尾处理
+- 优先使用本地重复片段检测，不依赖大模型。
+- 基本策略是：比较同一部剧多集的前后固定时间窗，寻找跨集重复的连续区间，识别为片头/片尾。
+- 片头片尾裁剪发生在 shot/segment 构建之前，避免它们污染检索库。
+- Gemini 仅在候选边界不稳定时作为复核，不作为主检测器。
 
-3. 入库任务模块
-- `POST /ingest/episode` 接收 `series_id + episode_id`，不直接上传大文件。
-- Worker 按固定阶段执行：`加载 manifest -> 定位视频 -> ffmpeg 抽音轨 -> ASR -> PySceneDetect -> 1fps 抽帧 -> 代表帧选择 -> scene 合并 -> embedding 生成 -> 写库`。
-- 每个阶段写入任务状态与计数；失败时保留已完成产物，不回滚媒体文件。
-- 重试策略固定为“按 episode 级幂等覆盖”，同一 `series_id + episode_id` 重跑时替换旧索引和旧元数据。
+3. 检索结构
+- 主检索入口改为 `segment`，不再依赖全库 `1fps frame` 检索。
+- `shot` 是段内细粒度结构，不直接作为默认返回单位。
+- 默认检索流程：
+  1. 查询图片或文本生成 query embedding
+  2. 查询 `segment` topK
+  3. 对候选 `segment` 做轻量精排
+  4. 返回可信区间和证据图/证据文本
+- 后续如需更细定位，可在命中 `segment` 后局部回扫 `shot` 或低频 `frame`，但这不是 V1 主链路。
 
-4. 数据模型与存储模块
-- 表结构固定为：`series`、`episodes`、`ingest_jobs`、`shots`、`scenes`、`frames`。
-- `scenes` 保存 `start_ts`、`end_ts`、`summary`、`asr_text`、`embedding`。
-- `frames` 保存 `frame_ts`、`image_path`、`context_asr_text`、`embedding`。
-- `shots` 作为中间结构入库，保留边界与代表帧引用，供评测和问题排查。
-- 本地文件结构固定为：`data/series/<series_id>/source/`、`data/series/<series_id>/audio/`、`data/series/<series_id>/frames/`、`data/series/<series_id>/artifacts/`。
+4. 成本与准确率策略
+- 默认不再全库维护 `1fps frame embedding`。
+- 默认优先做：
+  - `segment embedding`
+  - `shot 代表图`
+  - `ASR 文本`
+- embedding 生成与入库主流程解耦，允许先完成入库，再做后处理批量生成。
+- 当前为尽快验证真实链路，允许本地启用 `INGEST_SKIP_EMBEDDINGS=true`；正式检索前再恢复 segment 级 embedding。
 
-5. scene 合并与 embedding 模块
-- shot 边界先由 `PySceneDetect` 生成。
-- scene 合并由 `Gemini 3 Flash` 基于相邻 shot 的代表帧和对应 ASR 文本完成。
-- scene embedding 输入固定为：`代表帧图像 + scene_summary + scene 时间窗 ASR 文本`。
-- frame embedding 输入固定为：`当前帧图像 + 当前时间点前后 5 秒 ASR 文本`。
-- 第一版不引入 OCR，不处理画面文字检索。
-
-6. 查询服务模块
-- `POST /search/image` 先查 `scene` topK，再在候选 scene 时间窗内查 `frame` topK。
-- 精排分数固定由三部分组成：`scene/frame embedding 相似度`、`ASR 文本重合度`、`邻近帧连续性`。
-- 返回结构固定为：`series_id`、`episode_id`、`matched_ts`、`scene_start_ts`、`scene_end_ts`、`score`、`scene_summary`、`evidence_frames`、`evidence_text`。
-- `POST /search/text` 保留为辅助接口，采用 `BM25 + text embedding` 混合召回 scene，再回落到 frame。
-
-7. 评测与基线模块
-- 保留一个纯基线：`仅 1fps frame 检索`。
-- 主方案与基线共用同一评测集和同一结果格式。
-- 评测指标固定为：`Top1 命中正确 scene`、`Top5 命中正确 scene`、`Top1 时间误差中位数`、`每集 embedding 数量`、`单集处理时长`。
-
-## 需要补齐的实现级规格
-- `manifest` 文件格式文档。
-- 数据库 schema 文档与迁移草案。
-- 入库任务状态机文档，至少包含 `queued`、`running`、`failed`、`completed`。
-- API 契约文档，明确请求字段、响应字段、错误码与未命中返回。
-- 检索默认参数文档，固定 `scene topK`、`frame topK`、`ASR context window`、精排权重默认值。
-
-## 开发顺序
-1. 先完成 `manifest + schema + ingest_jobs` 三件套，因为这是后续所有模块的基础接口。
-2. 再完成本地入库 worker，先打通 `ASR + shot detection + 1fps frame extraction`，暂时允许 scene 合并先用简单规则占位。
-3. 然后接入 `Gemini 3 Flash scene 合并` 与 `gemini-embedding-2-preview`，完成 scene/frame 双层索引。
-4. 最后实现 `search/image`、`search/text`、评测脚本和演示页。
+## 数据模型与接口
+- 核心事实单位：
+  - `series`
+  - `episodes`
+  - `ingest_jobs`
+  - `shots`
+  - `segments`
+- `frames` 只保留为可选辅助产物，不再作为默认主索引。
+- `shots` 保存：
+  - `start_ts`
+  - `end_ts`
+  - `start_frame_path`
+  - `mid_frame_path`
+  - `end_frame_path`
+  - `asr_text`
+- `segments` 保存：
+  - `start_ts`
+  - `end_ts`
+  - `summary`
+  - `asr_text`
+  - `representative_frame_paths`
+  - `embedding`
+  - `shot_indexes`
+- 查询接口的目标返回结构应以区间为主，而不是单点时间戳：
+  - `matched_start_ts`
+  - `matched_end_ts`
+  - `score`
+  - `evidence_frames`
+  - `evidence_text`
 
 ## 测试与验收
-- manifest 校验必须覆盖缺文件、重复集号、非法路径、重复 series_id。
-- 单集入库必须能生成可查询的 `scene` 和 `frame` 记录，并且任务状态正确落库。
-- 截图查询必须返回 top1 与 top3 候选；未命中时返回显式低置信状态。
-- 在整季评测集上达到：`Top1 命中正确 scene >= 70%`、`Top5 >= 90%`、`时间误差中位数 <= 5 秒`。
-- 基线与主方案必须能同场评测，输出统一格式结果。
+- 入库验收：
+  - 单集视频能稳定产出 `shots` 与 `segments`
+  - `shot` 有代表图
+  - 片头片尾可被识别并剔除或显式标记
+- 检索验收：
+  - 返回结果必须是可信区间
+  - 允许低精度，不要求秒级
+  - 首批目标是“区间正确”优先于“秒级接近”
+- 当前建议验收口径：
+  - `Top1 命中正确 segment >= 70%`
+  - `Top5 命中正确 segment >= 90%`
+  - 返回区间覆盖人工标注剧情片段
 
-## 假设与默认项
-- 默认只处理中文剧集。
-- 默认输入是本地视频目录，不支持远程拉取。
-- 默认媒体与产物都落在本地磁盘，不接对象存储。
-- 默认本地 ASR 使用 `faster-whisper` 作为首选实现。
-- 默认后台队列使用 `Redis + RQ`，不额外引入更重的工作流系统。
-- 默认第一阶段先完成后端闭环，再补最小演示页面。
+## 当前实现与目标差异
+- 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，但仍是过渡状态。
+- 当前真实产物里：
+  - `shots` 可用
+  - `frames` 仍然存在，属于历史过渡设计
+  - `scenes` 当前仍可能退化为 `1 shot = 1 scene`
+- 后续开发应优先把当前 `scene/frame` 过渡实现迁移到 `shot/segment` 正式结构，不再扩大 `frame` 的责任边界。

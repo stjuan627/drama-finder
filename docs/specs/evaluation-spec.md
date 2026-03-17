@@ -1,38 +1,35 @@
 # 评测规格
 
 ## 评测目标
-- 比较主方案与纯 `1fps frame` 基线。
-- 评估：
-  - 正确 scene 命中率
-  - 时间定位误差
-  - 数据处理成本
+- 比较主方案与历史高密度 frame 基线。
+- 当前主评测目标是“区间命中”，不是秒级误差。
 
 ## 数据集
-- 单位：截图样本
+- 单位：截图或文本查询样本
 - 每条样本至少包含：
   - `series_id`
   - `episode_id`
-  - `image_path`
-  - `gt_ts`
-  - `gt_scene_start_ts`
-  - `gt_scene_end_ts`
+  - `query_type`
+  - `image_path | query_text`
+  - `gt_start_ts`
+  - `gt_end_ts`
 
 ## 指标定义
-- `Top1 命中正确 scene`
-  - top1 返回的 `matched_ts` 落入人工标注 scene 窗口
-- `Top5 命中正确 scene`
-  - top5 任一命中满足上述条件
-- `时间误差中位数`
-  - `abs(predicted_ts - gt_ts)` 的中位数
+- `Top1 命中正确 segment`
+  - top1 返回区间与人工标注区间有有效重叠
+- `Top5 命中正确 segment`
+  - top5 任一结果满足上述条件
+- `区间覆盖率`
+  - 预测区间与标注区间的交集 / 标注区间
 - `每集 embedding 数量`
-  - scene 记录实际写入 embedding 的数量
+  - 以 `segment` 为主，不再把全量 `frame` 作为默认主统计
 - `单集处理时长`
   - 从任务 `started_at` 到 `finished_at`
 
 ## 验收线
-- `Top1 命中正确 scene >= 70%`
-- `Top5 命中正确 scene >= 90%`
-- `时间误差中位数 <= 5 秒`
+- `Top1 命中正确 segment >= 70%`
+- `Top5 命中正确 segment >= 90%`
+- `区间覆盖率` 达到可用阈值，优先保证命中可信片段
 
 ## 输出格式
 - 每次评测至少输出：
@@ -41,3 +38,6 @@
   - 失败样本列表
   - 处理时长汇总
 
+## 说明
+- 秒级误差不再是 V1 主验收指标。
+- 若后续增加局部高频回扫，可另加“局部细定位误差”作为次级指标。

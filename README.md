@@ -8,7 +8,7 @@
 - 数据库模型与迁移骨架
 - manifest 校验与元数据同步
 - 入库任务编排骨架
-- scene/frame 双层检索服务骨架
+- shot/segment 方案的过渡实现骨架
 - 规格文档目录
 
 详细方案见 [docs/general-plan.md](docs/general-plan.md) 和 [AGENTS.md](AGENTS.md)。
