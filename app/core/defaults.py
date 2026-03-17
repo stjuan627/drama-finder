@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+APP_NAME = "Drama Finder"
+APP_ENV = "development"
+APP_HOST = "0.0.0.0"
+APP_PORT = 8000
+
+DATA_ROOT = Path("./data")
+MANIFEST_ROOT = Path("./manifests")
+
+EMBEDDING_DIMENSION = 3072
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-2-preview"
+GEMINI_SCENE_MODEL = "gemini-3-flash-preview"
+
+SCENE_TOP_K = 10
+FRAME_TOP_K = 20
+ASR_CONTEXT_WINDOW_SECONDS = 5
+REPRESENTATIVE_FRAMES_PER_SHOT = 3
+LOW_CONFIDENCE_THRESHOLD = 0.35
+JOB_TIMEOUT_SECONDS = 7200
+JOB_RETRY_COUNT = 1

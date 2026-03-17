@@ -1,0 +1,23 @@
+version: v1
+series_id: example-series
+series_title: 示例剧集
+season_label: S1
+language: zh-CN
+video_root: ./example-series-videos
+episodes:
+  - episode_id: ep01
+    episode_no: 1
+    title: 第1集
+    filename: 01.mp4
+  - episode_id: ep02
+    episode_no: 2
+    title: 第2集
+    filename: 02.mp4
+  - episode_id: ep03
+    episode_no: 3
+    title: 第3集
+    filename: 03.mp4
+  - episode_id: ep04
+    episode_no: 4
+    title: 第4集
+    filename: 04.mkv
