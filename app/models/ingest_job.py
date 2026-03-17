@@ -24,9 +24,20 @@ class IngestJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     manifest_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus), nullable=False, default=JobStatus.QUEUED
+        Enum(
+            JobStatus,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=JobStatus.QUEUED,
     )
-    current_stage: Mapped[JobStage | None] = mapped_column(Enum(JobStage), nullable=True)
+    current_stage: Mapped[JobStage | None] = mapped_column(
+        Enum(
+            JobStage,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
+    )
     progress_current: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     progress_total: Mapped[int] = mapped_column(Integer, nullable=False, default=9)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

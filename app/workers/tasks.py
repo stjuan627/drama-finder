@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from workers.jobs import run_episode_ingest_job
+from app.db.session import SessionLocal
+from app.services.ingest import IngestPipeline
 
 
 def run_ingest_job(job_id: str) -> None:
-    run_episode_ingest_job(job_id)
+    pipeline = IngestPipeline()
+    with SessionLocal() as db:
+        pipeline.run(db, job_id)

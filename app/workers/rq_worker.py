@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from rq import Connection, Worker
+from rq import Worker
 
-from app.services.queue import get_queue, get_redis_connection
+from app.services.queue import QueueService
 
 
 def main() -> None:
-    connection = get_redis_connection()
-    queue = get_queue()
-    with Connection(connection):
-        worker = Worker([queue], connection=connection)
-        worker.work()
+    queue_service = QueueService()
+    worker = Worker([queue_service._queue], connection=queue_service._redis)
+    worker.work()
 
 
 if __name__ == "__main__":

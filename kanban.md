@@ -16,9 +16,9 @@
   - `.venv/bin/pytest -q` 通过，当前 `2 passed`
   - FastAPI `/healthz` smoke test 返回 `200`
 - 当前主要技术债：
-  - 基础设施镜像首次拉取较慢，`K-021` 仍在进行中
+  - 首个真实剧集入库仍在推进中，`K-022` 尚未完成
   - 仓库仍有少量旧残留目录和缓存目录，需要继续收口
-  - 入库链路仍是“骨架可跑”，还没用真实剧集完成端到端验证
+  - Gemini scene merge 与 embedding 还没进入真实线上调用阶段
 
 ## DONE
 
@@ -112,7 +112,7 @@
 ## TODO
 
 ### K-022 入库任务端到端跑通一集
-- 状态：`TODO`
+- 状态：`IN_PROGRESS`
 - 优先级：最高
 - 写入范围：`app/services/ingest.py`、`app/services/media.py`、`app/services/asr.py`、`app/services/scene_detection.py`、`app/workers/`
 - 依赖：K-020、K-021
@@ -174,12 +174,12 @@
 ## BLOCKED
 
 ### K-030 真实数据验证
-- 状态：`BLOCKED`
-- 阻塞项：
-  - 需要一部真实剧集的视频目录
-  - 需要对应 manifest
-- 解锁条件：
-  - 用户提供一套实际输入目录
+- 状态：`IN_PROGRESS`
+- 当前输入：
+  - `data/series/wufulinmen/manifest.yml`
+  - `data/series/wufulinmen/01.mp4` 到 `05.mp4`
+- 当前进展：
+  - `ep01` 已成功进入真实入库执行
 
 ### K-031 Gemini 线上验证
 - 状态：`TODO`

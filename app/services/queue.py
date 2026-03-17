@@ -18,5 +18,7 @@ class QueueService:
         )
 
     def enqueue_ingest(self, job_id: str) -> str:
-        job = self._queue.enqueue("app.workers.tasks.run_ingest_job", job_id)
+        from app.workers.tasks import run_ingest_job
+
+        job = self._queue.enqueue(run_ingest_job, job_id)
         return job.id
