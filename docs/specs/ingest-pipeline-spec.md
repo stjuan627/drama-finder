@@ -26,6 +26,7 @@
   - 默认模型：`iic/SenseVoiceSmall`
   - 默认设备：`CPU`
   - 默认量化：`int8`
+  - 先用 `VAD` 做语音段检测，再按流式 chunk 逐段送入 ASR，避免整段长音频一次性进模型
   - 输出：`artifacts/asr_segments.json`
   - 结构：`[{start, end, text}]`
 4. `shot_detection`

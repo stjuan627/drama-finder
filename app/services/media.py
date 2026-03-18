@@ -96,7 +96,6 @@ class FFmpegService:
     def probe_duration(self, video_path: Path) -> float:
         command = [
             "ffprobe",
-            "-nostdin",
             "-v",
             "error",
             "-show_entries",

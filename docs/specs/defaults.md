@@ -17,8 +17,13 @@
 - `embedding_dimensions = 3072`
 - `asr_model_name = iic/SenseVoiceSmall`
 - `asr_model_dir = ""`（为空表示首次按模型名自动下载）
+- `asr_vad_model_name = funasr/fsmn-vad-onnx`
+- `asr_vad_model_dir = ""`
 - `asr_device = cpu`
 - `asr_compute_type = int8`
+- `asr_stream_chunk_seconds = 30`
+- `asr_vad_merge_gap_ms = 300`
+- `asr_segment_max_seconds = 30`
 
 ## 环境变量默认值
 - `APP_HOST = 0.0.0.0`
@@ -38,3 +43,7 @@
 - embedding 默认策略为后处理：
   - 首轮 ingest 只写入 `frames` 与 `pending_backfill` 状态，不阻塞等待 Gemini。
   - 后处理任务再批量补齐 `Frame.embedding`，失败帧保留 `embedding_status=failed` 供重试。
+- 长音频 ASR 默认采用 `VAD + stream`：
+  - 先流式检测语音段
+  - 再按语音段逐段调用 `SenseVoice`
+  - 单段默认不超过 `30s`

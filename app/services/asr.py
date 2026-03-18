@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 import re
+import tempfile
+import wave
 from pathlib import Path
 from typing import Any
+
+import numpy as np
+import yaml
 
 from app.core.config import get_settings
 
@@ -15,11 +21,31 @@ _SENSEVOICE_TAG_RE = re.compile(r"<\|[^|]+?\|>")
 class ASRService:
     def __init__(self) -> None:
         self._model: Any | None = None
+        self._vad_model: Any | None = None
 
     def transcribe(self, audio_path: Path) -> list[dict[str, Any]]:
         model = self._load_model()
-        raw_result = self._run_inference(model, audio_path)
-        return self._normalize_segments(raw_result)
+        vad_model = self._load_vad_model()
+        speech_segments = self._stream_vad_segments(audio_path, vad_model)
+
+        results: list[dict[str, Any]] = []
+        for start_ms, end_ms in speech_segments:
+            waveform = self._read_wave_segment(audio_path, start_ms, end_ms)
+            if waveform.size == 0:
+                continue
+
+            text = self._transcribe_waveform(model, waveform)
+            if not text:
+                continue
+
+            results.append(
+                {
+                    "start": round(start_ms / 1000.0, 3),
+                    "end": round(end_ms / 1000.0, 3),
+                    "text": text,
+                }
+            )
+        return results
 
     def _load_model(self) -> Any:
         if self._model is not None:
@@ -33,10 +59,79 @@ class ASRService:
                 "Install the 'pipeline' extra to enable ASR."
             ) from exc
 
-        model_source = settings.asr_model_dir.strip() or settings.asr_model_name
+        model_source = self._resolve_model_source(
+            settings.asr_model_dir.strip() or settings.asr_model_name
+        )
         init_kwargs = self._build_init_kwargs(SenseVoiceSmall)
         self._model = SenseVoiceSmall(model_source, **init_kwargs)
         return self._model
+
+    def _load_vad_model(self) -> Any:
+        if self._vad_model is not None:
+            return self._vad_model
+
+        try:
+            from funasr_onnx import Fsmn_vad_online
+        except ImportError as exc:
+            raise RuntimeError(
+                "FunASR VAD ONNX runtime is not installed. "
+                "Install the 'pipeline' extra to enable streaming ASR."
+            ) from exc
+
+        model_source = settings.asr_vad_model_dir.strip() or settings.asr_vad_model_name
+        resolved_source = self._resolve_model_source(model_source)
+        compat_source = self._prepare_vad_model_dir(Path(resolved_source))
+        init_kwargs = self._build_init_kwargs(Fsmn_vad_online)
+        self._vad_model = Fsmn_vad_online(str(compat_source), **init_kwargs)
+        return self._vad_model
+
+    def _resolve_model_source(self, model_source: str) -> str:
+        path = Path(model_source).expanduser()
+        if path.exists():
+            return str(path.resolve())
+
+        if "/" not in model_source:
+            return model_source
+
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError:
+            return model_source
+
+        try:
+            return snapshot_download(repo_id=model_source)
+        except Exception:
+            return model_source
+
+    def _prepare_vad_model_dir(self, model_dir: Path) -> Path:
+        if (model_dir / "config.yaml").exists() and (model_dir / "am.mvn").exists():
+            return model_dir
+
+        vad_yaml = model_dir / "vad.yaml"
+        vad_mvn = model_dir / "vad.mvn"
+        if not vad_yaml.exists() or not vad_mvn.exists():
+            return model_dir
+
+        digest = hashlib.sha1(str(model_dir).encode("utf-8")).hexdigest()[:12]
+        compat_dir = Path(tempfile.gettempdir()) / "drama-finder-vad" / digest
+        compat_dir.mkdir(parents=True, exist_ok=True)
+
+        config = yaml.safe_load(vad_yaml.read_text(encoding="utf-8"))
+        if "model_conf" not in config and "vad_post_conf" in config:
+            config["model_conf"] = config.pop("vad_post_conf")
+        (compat_dir / "config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False),
+            encoding="utf-8",
+        )
+        (compat_dir / "am.mvn").write_bytes(vad_mvn.read_bytes())
+
+        for filename in ("model.onnx", "model_quant.onnx"):
+            source = model_dir / filename
+            if source.exists():
+                target = compat_dir / filename
+                if not target.exists():
+                    target.symlink_to(source)
+        return compat_dir
 
     @staticmethod
     def _build_init_kwargs(model_cls: Any) -> dict[str, Any]:
@@ -48,19 +143,139 @@ class ASRService:
         kwargs: dict[str, Any] = {}
         if "device" in parameters:
             kwargs["device"] = settings.asr_device
+        if "device_id" in parameters:
+            kwargs["device_id"] = ASRService._resolve_device_id(settings.asr_device)
         if "quantize" in parameters:
             kwargs["quantize"] = settings.asr_compute_type.lower() in {"int8", "int8_float16"}
         return kwargs
 
     @staticmethod
-    def _run_inference(model: Any, audio_path: Path) -> Any:
-        target = str(audio_path)
+    def _resolve_device_id(device: str) -> int | str:
+        normalized = device.strip().lower()
+        if normalized in {"", "cpu", "auto", "-1"}:
+            return "-1"
+        if normalized.startswith("cuda:"):
+            suffix = normalized.split(":", 1)[1]
+            return int(suffix) if suffix.isdigit() else suffix
+        return int(normalized) if normalized.isdigit() else normalized
+
+    def _stream_vad_segments(self, audio_path: Path, vad_model: Any) -> list[tuple[int, int]]:
+        segments: list[tuple[int, int]] = []
+        param_dict: dict[str, Any] = {"in_cache": [], "is_final": False}
+
+        with wave.open(str(audio_path), "rb") as wav_file:
+            chunk_frames = max(
+                1,
+                int(wav_file.getframerate() * settings.asr_stream_chunk_seconds),
+            )
+            while True:
+                frames = wav_file.readframes(chunk_frames)
+                if not frames:
+                    break
+
+                waveform = self._pcm16_bytes_to_waveform(
+                    frames=frames,
+                    channels=wav_file.getnchannels(),
+                )
+                param_dict["is_final"] = wav_file.tell() >= wav_file.getnframes()
+                vad_segments = self._flatten_vad_segments(
+                    vad_model(waveform, param_dict=param_dict)
+                )
+                segments.extend(vad_segments)
+
+        return self._merge_vad_segments(
+            segments,
+            gap_ms=settings.asr_vad_merge_gap_ms,
+            max_segment_ms=int(settings.asr_segment_max_seconds * 1000),
+        )
+
+    @staticmethod
+    def _pcm16_bytes_to_waveform(frames: bytes, channels: int) -> np.ndarray:
+        waveform = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        if channels > 1:
+            waveform = waveform.reshape(-1, channels).mean(axis=1)
+        return waveform
+
+    @staticmethod
+    def _flatten_vad_segments(raw_segments: Any) -> list[tuple[int, int]]:
+        flattened: list[tuple[int, int]] = []
+
+        def visit(node: Any) -> None:
+            if isinstance(node, (list, tuple)):
+                if len(node) == 2 and all(isinstance(item, (int, float)) for item in node):
+                    start_ms, end_ms = int(node[0]), int(node[1])
+                    if end_ms > start_ms:
+                        flattened.append((start_ms, end_ms))
+                    return
+                for item in node:
+                    visit(item)
+
+        visit(raw_segments)
+        flattened.sort(key=lambda item: item[0])
+        return flattened
+
+    @staticmethod
+    def _merge_vad_segments(
+        segments: list[tuple[int, int]],
+        gap_ms: int,
+        max_segment_ms: int,
+    ) -> list[tuple[int, int]]:
+        if not segments:
+            return []
+
+        merged: list[list[int]] = []
+        for start_ms, end_ms in sorted(segments, key=lambda item: item[0]):
+            if not merged:
+                merged.append([start_ms, end_ms])
+                continue
+
+            previous = merged[-1]
+            can_merge = (
+                start_ms - previous[1] <= gap_ms
+                and end_ms - previous[0] <= max_segment_ms
+            )
+            if can_merge:
+                previous[1] = max(previous[1], end_ms)
+            else:
+                merged.append([start_ms, end_ms])
+
+        normalized: list[tuple[int, int]] = []
+        for start_ms, end_ms in merged:
+            cursor = start_ms
+            while end_ms - cursor > max_segment_ms:
+                normalized.append((cursor, cursor + max_segment_ms))
+                cursor += max_segment_ms
+            normalized.append((cursor, end_ms))
+        return normalized
+
+    @staticmethod
+    def _read_wave_segment(audio_path: Path, start_ms: int, end_ms: int) -> np.ndarray:
+        with wave.open(str(audio_path), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
+            start_frame = max(0, int(start_ms * sample_rate / 1000))
+            end_frame = max(start_frame, int(end_ms * sample_rate / 1000))
+            wav_file.setpos(start_frame)
+            frames = wav_file.readframes(end_frame - start_frame)
+            return ASRService._pcm16_bytes_to_waveform(
+                frames=frames,
+                channels=wav_file.getnchannels(),
+            )
+
+    def _transcribe_waveform(self, model: Any, waveform: np.ndarray) -> str:
+        raw_result = self._run_inference(model, waveform)
+        normalized = self._normalize_segments(raw_result)
+        if normalized:
+            return " ".join(segment["text"] for segment in normalized if segment["text"]).strip()
+        return self._extract_plain_text(raw_result)
+
+    @staticmethod
+    def _run_inference(model: Any, audio_input: str | np.ndarray) -> Any:
         if hasattr(model, "transcribe"):
-            return model.transcribe(target)
+            return model.transcribe(audio_input)
         if hasattr(model, "inference"):
-            return model.inference(target)
+            return model.inference(audio_input)
         if callable(model):
-            return model(target)
+            return model(audio_input)
         raise RuntimeError("SenseVoice model has no usable inference entrypoint")
 
     def _normalize_segments(self, raw_result: Any) -> list[dict[str, Any]]:

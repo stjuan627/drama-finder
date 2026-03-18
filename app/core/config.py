@@ -39,8 +39,13 @@ class Settings(BaseSettings):
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
     asr_model_name: str = defaults.ASR_MODEL_NAME
     asr_model_dir: str = defaults.ASR_MODEL_DIR
+    asr_vad_model_name: str = defaults.ASR_VAD_MODEL_NAME
+    asr_vad_model_dir: str = defaults.ASR_VAD_MODEL_DIR
     asr_device: str = defaults.ASR_DEVICE
     asr_compute_type: str = defaults.ASR_COMPUTE_TYPE
+    asr_stream_chunk_seconds: int = defaults.ASR_STREAM_CHUNK_SECONDS
+    asr_vad_merge_gap_ms: int = defaults.ASR_VAD_MERGE_GAP_MS
+    asr_segment_max_seconds: int = defaults.ASR_SEGMENT_MAX_SECONDS
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
     representative_frames_per_shot: int = defaults.REPRESENTATIVE_FRAMES_PER_SHOT
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
