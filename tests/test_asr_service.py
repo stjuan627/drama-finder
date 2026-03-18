@@ -8,14 +8,14 @@ import yaml
 from app.services.asr import ASRService
 
 
-def test_merge_vad_segments_merges_close_ranges_and_splits_long_ranges() -> None:
-    merged = ASRService._merge_vad_segments(
-        segments=[(0, 1000), (1200, 2500), (4000, 39000)],
-        gap_ms=300,
+def test_split_segment_windows_splits_long_ranges() -> None:
+    windows = ASRService._split_segment_windows(
+        start_ms=4000,
+        end_ms=39000,
         max_segment_ms=30000,
     )
 
-    assert merged == [(0, 2500), (4000, 34000), (34000, 39000)]
+    assert windows == [(4000, 34000), (34000, 39000)]
 
 
 def test_prepare_vad_model_dir_converts_vad_yaml_layout(tmp_path: Path) -> None:
@@ -44,34 +44,52 @@ def test_prepare_vad_model_dir_converts_vad_yaml_layout(tmp_path: Path) -> None:
     assert (compat_dir / "model_quant.onnx").exists()
 
 
-def test_transcribe_builds_timed_segments_from_streaming_vad(monkeypatch) -> None:
+def test_transcribe_streams_audio_and_builds_timed_segments(monkeypatch) -> None:
     service = ASRService()
 
     monkeypatch.setattr(service, "_load_model", lambda: object())
     monkeypatch.setattr(service, "_load_vad_model", lambda: object())
-    monkeypatch.setattr(
-        service,
-        "_stream_vad_segments",
-        lambda _audio_path, _vad_model: [(1000, 2500), (4000, 5200)],
-    )
-    monkeypatch.setattr(
-        service,
-        "_read_wave_segment",
-        lambda _audio_path, start_ms, end_ms: np.array([start_ms, end_ms], dtype=np.float32),
-    )
 
-    seen_waveforms: list[list[float]] = []
-
-    def fake_transcribe_waveform(_model: object, waveform: np.ndarray) -> str:
-        seen_waveforms.append(waveform.tolist())
-        return "片段文本"
-
-    monkeypatch.setattr(service, "_transcribe_waveform", fake_transcribe_waveform)
+    expected = [{"start": 1.0, "end": 2.5, "text": "片段文本"}]
+    monkeypatch.setattr(service, "_stream_transcribe", lambda *_args: expected)
 
     result = service.transcribe(Path("/tmp/fake.wav"))
 
-    assert seen_waveforms == [[1000.0, 2500.0], [4000.0, 5200.0]]
-    assert result == [
-        {"start": 1.0, "end": 2.5, "text": "片段文本"},
-        {"start": 4.0, "end": 5.2, "text": "片段文本"},
-    ]
+    assert result == expected
+
+
+def test_consume_stream_segment_merges_close_ranges() -> None:
+    pending, flushed = ASRService()._consume_stream_segment(
+        pending_segment=(1000, 2000),
+        incoming_segment=(2200, 2800),
+        buffer=np.array([], dtype=np.float32),
+        buffer_start_ms=0,
+        sample_rate=16000,
+        model=object(),
+    )
+
+    assert pending == (1000, 2800)
+    assert flushed == []
+
+
+def test_slice_and_trim_audio_buffer() -> None:
+    sample_rate = 10
+    buffer = np.arange(100, dtype=np.float32)
+
+    sliced = ASRService._slice_buffer_waveform(
+        buffer=buffer,
+        buffer_start_ms=1000,
+        start_ms=2000,
+        end_ms=4000,
+        sample_rate=sample_rate,
+    )
+    trimmed_buffer, trimmed_start = ASRService._trim_audio_buffer(
+        buffer=buffer,
+        buffer_start_ms=1000,
+        keep_from_ms=3000,
+        sample_rate=sample_rate,
+    )
+
+    assert sliced.tolist() == list(range(10, 30))
+    assert trimmed_start == 3000
+    assert trimmed_buffer.tolist() == list(range(20, 100))

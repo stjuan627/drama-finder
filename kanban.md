@@ -21,7 +21,6 @@
   - 需要把遗留 `scene/segment` 模型与表结构进一步降级为纯兼容层
   - 需要把 `frame embedding` 从阻塞式首轮入库改成后处理
   - 需要完善 `frame + ASR` 方案下的区间评测
-  - 长音频 `ASR` 需要稳定落在 `VAD + stream` 模式，避免整段音频触发 OOM
   - 已确认 shot 质检可接受，后续应围绕 `first/mid` 双图继续收敛
 
 ## DONE

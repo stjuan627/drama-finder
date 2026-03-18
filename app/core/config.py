@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     asr_vad_model_name: str = defaults.ASR_VAD_MODEL_NAME
     asr_vad_model_dir: str = defaults.ASR_VAD_MODEL_DIR
     asr_device: str = defaults.ASR_DEVICE
+    asr_cpu_cores: int = defaults.ASR_CPU_CORES
     asr_compute_type: str = defaults.ASR_COMPUTE_TYPE
     asr_stream_chunk_seconds: int = defaults.ASR_STREAM_CHUNK_SECONDS
     asr_vad_merge_gap_ms: int = defaults.ASR_VAD_MERGE_GAP_MS

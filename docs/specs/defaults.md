@@ -20,6 +20,7 @@
 - `asr_vad_model_name = funasr/fsmn-vad-onnx`
 - `asr_vad_model_dir = ""`
 - `asr_device = cpu`
+- `asr_cpu_cores = 2`
 - `asr_compute_type = int8`
 - `asr_stream_chunk_seconds = 30`
 - `asr_vad_merge_gap_ms = 300`

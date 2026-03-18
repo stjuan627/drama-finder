@@ -26,26 +26,7 @@ class ASRService:
     def transcribe(self, audio_path: Path) -> list[dict[str, Any]]:
         model = self._load_model()
         vad_model = self._load_vad_model()
-        speech_segments = self._stream_vad_segments(audio_path, vad_model)
-
-        results: list[dict[str, Any]] = []
-        for start_ms, end_ms in speech_segments:
-            waveform = self._read_wave_segment(audio_path, start_ms, end_ms)
-            if waveform.size == 0:
-                continue
-
-            text = self._transcribe_waveform(model, waveform)
-            if not text:
-                continue
-
-            results.append(
-                {
-                    "start": round(start_ms / 1000.0, 3),
-                    "end": round(end_ms / 1000.0, 3),
-                    "text": text,
-                }
-            )
-        return results
+        return self._stream_transcribe(audio_path, vad_model, model)
 
     def _load_model(self) -> Any:
         if self._model is not None:
@@ -145,6 +126,8 @@ class ASRService:
             kwargs["device"] = settings.asr_device
         if "device_id" in parameters:
             kwargs["device_id"] = ASRService._resolve_device_id(settings.asr_device)
+        if "intra_op_num_threads" in parameters:
+            kwargs["intra_op_num_threads"] = settings.asr_cpu_cores
         if "quantize" in parameters:
             kwargs["quantize"] = settings.asr_compute_type.lower() in {"int8", "int8_float16"}
         return kwargs
@@ -159,14 +142,25 @@ class ASRService:
             return int(suffix) if suffix.isdigit() else suffix
         return int(normalized) if normalized.isdigit() else normalized
 
-    def _stream_vad_segments(self, audio_path: Path, vad_model: Any) -> list[tuple[int, int]]:
-        segments: list[tuple[int, int]] = []
+    def _stream_transcribe(
+        self,
+        audio_path: Path,
+        vad_model: Any,
+        model: Any,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         param_dict: dict[str, Any] = {"in_cache": [], "is_final": False}
+        emitted_segments: set[tuple[int, int]] = set()
+        pending_segment: tuple[int, int] | None = None
+        buffer = np.array([], dtype=np.float32)
+        buffer_start_ms = 0
+        sample_rate = 16000
 
         with wave.open(str(audio_path), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
             chunk_frames = max(
                 1,
-                int(wav_file.getframerate() * settings.asr_stream_chunk_seconds),
+                int(sample_rate * settings.asr_stream_chunk_seconds),
             )
             while True:
                 frames = wav_file.readframes(chunk_frames)
@@ -177,17 +171,170 @@ class ASRService:
                     frames=frames,
                     channels=wav_file.getnchannels(),
                 )
+                if waveform.size == 0:
+                    continue
+
+                buffer = np.concatenate((buffer, waveform))
                 param_dict["is_final"] = wav_file.tell() >= wav_file.getnframes()
                 vad_segments = self._flatten_vad_segments(
                     vad_model(waveform, param_dict=param_dict)
                 )
-                segments.extend(vad_segments)
+                for segment in vad_segments:
+                    if segment in emitted_segments:
+                        continue
+                    emitted_segments.add(segment)
+                    pending_segment, flushed_results = self._consume_stream_segment(
+                        pending_segment=pending_segment,
+                        incoming_segment=segment,
+                        buffer=buffer,
+                        buffer_start_ms=buffer_start_ms,
+                        sample_rate=sample_rate,
+                        model=model,
+                    )
+                    results.extend(flushed_results)
+                    if pending_segment is not None:
+                        buffer, buffer_start_ms = self._trim_audio_buffer(
+                            buffer=buffer,
+                            buffer_start_ms=buffer_start_ms,
+                            keep_from_ms=pending_segment[0],
+                            sample_rate=sample_rate,
+                        )
 
-        return self._merge_vad_segments(
-            segments,
-            gap_ms=settings.asr_vad_merge_gap_ms,
-            max_segment_ms=int(settings.asr_segment_max_seconds * 1000),
+        if pending_segment is not None:
+            results.extend(
+                self._transcribe_segment_range(
+                    model=model,
+                    buffer=buffer,
+                    buffer_start_ms=buffer_start_ms,
+                    start_ms=pending_segment[0],
+                    end_ms=pending_segment[1],
+                    sample_rate=sample_rate,
+                )
+            )
+        return results
+
+    def _consume_stream_segment(
+        self,
+        pending_segment: tuple[int, int] | None,
+        incoming_segment: tuple[int, int],
+        buffer: np.ndarray,
+        buffer_start_ms: int,
+        sample_rate: int,
+        model: Any,
+    ) -> tuple[tuple[int, int] | None, list[dict[str, Any]]]:
+        if pending_segment is None:
+            return incoming_segment, []
+
+        if self._should_merge_segments(pending_segment, incoming_segment):
+            merged = (pending_segment[0], incoming_segment[1])
+            return merged, []
+
+        flushed_results = self._transcribe_segment_range(
+            model=model,
+            buffer=buffer,
+            buffer_start_ms=buffer_start_ms,
+            start_ms=pending_segment[0],
+            end_ms=pending_segment[1],
+            sample_rate=sample_rate,
         )
+        return incoming_segment, flushed_results
+
+    def _should_merge_segments(
+        self,
+        previous_segment: tuple[int, int],
+        current_segment: tuple[int, int],
+    ) -> bool:
+        gap_ms = current_segment[0] - previous_segment[1]
+        merged_duration_ms = current_segment[1] - previous_segment[0]
+        return (
+            gap_ms <= settings.asr_vad_merge_gap_ms
+            and merged_duration_ms <= int(settings.asr_segment_max_seconds * 1000)
+        )
+
+    def _transcribe_segment_range(
+        self,
+        model: Any,
+        buffer: np.ndarray,
+        buffer_start_ms: int,
+        start_ms: int,
+        end_ms: int,
+        sample_rate: int,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        max_segment_ms = int(settings.asr_segment_max_seconds * 1000)
+        for chunk_start_ms, chunk_end_ms in self._split_segment_windows(
+            start_ms=start_ms,
+            end_ms=end_ms,
+            max_segment_ms=max_segment_ms,
+        ):
+            waveform = self._slice_buffer_waveform(
+                buffer=buffer,
+                buffer_start_ms=buffer_start_ms,
+                start_ms=chunk_start_ms,
+                end_ms=chunk_end_ms,
+                sample_rate=sample_rate,
+            )
+            if waveform.size == 0:
+                continue
+
+            text = self._transcribe_waveform(model, waveform)
+            if not text:
+                continue
+
+            results.append(
+                {
+                    "start": round(chunk_start_ms / 1000.0, 3),
+                    "end": round(chunk_end_ms / 1000.0, 3),
+                    "text": text,
+                }
+            )
+        return results
+
+    @staticmethod
+    def _split_segment_windows(
+        start_ms: int,
+        end_ms: int,
+        max_segment_ms: int,
+    ) -> list[tuple[int, int]]:
+        if end_ms <= start_ms:
+            return []
+
+        windows: list[tuple[int, int]] = []
+        cursor = start_ms
+        while end_ms - cursor > max_segment_ms:
+            windows.append((cursor, cursor + max_segment_ms))
+            cursor += max_segment_ms
+        windows.append((cursor, end_ms))
+        return windows
+
+    @staticmethod
+    def _slice_buffer_waveform(
+        buffer: np.ndarray,
+        buffer_start_ms: int,
+        start_ms: int,
+        end_ms: int,
+        sample_rate: int,
+    ) -> np.ndarray:
+        start_index = max(0, int((start_ms - buffer_start_ms) * sample_rate / 1000))
+        end_index = max(start_index, int((end_ms - buffer_start_ms) * sample_rate / 1000))
+        return buffer[start_index:end_index]
+
+    @staticmethod
+    def _trim_audio_buffer(
+        buffer: np.ndarray,
+        buffer_start_ms: int,
+        keep_from_ms: int,
+        sample_rate: int,
+    ) -> tuple[np.ndarray, int]:
+        if keep_from_ms <= buffer_start_ms:
+            return buffer, buffer_start_ms
+
+        trim_samples = int((keep_from_ms - buffer_start_ms) * sample_rate / 1000)
+        if trim_samples <= 0:
+            return buffer, buffer_start_ms
+        if trim_samples >= buffer.size:
+            return np.array([], dtype=np.float32), keep_from_ms
+        return buffer[trim_samples:], keep_from_ms
 
     @staticmethod
     def _pcm16_bytes_to_waveform(frames: bytes, channels: int) -> np.ndarray:
@@ -247,19 +394,6 @@ class ASRService:
                 cursor += max_segment_ms
             normalized.append((cursor, end_ms))
         return normalized
-
-    @staticmethod
-    def _read_wave_segment(audio_path: Path, start_ms: int, end_ms: int) -> np.ndarray:
-        with wave.open(str(audio_path), "rb") as wav_file:
-            sample_rate = wav_file.getframerate()
-            start_frame = max(0, int(start_ms * sample_rate / 1000))
-            end_frame = max(start_frame, int(end_ms * sample_rate / 1000))
-            wav_file.setpos(start_frame)
-            frames = wav_file.readframes(end_frame - start_frame)
-            return ASRService._pcm16_bytes_to_waveform(
-                frames=frames,
-                channels=wav_file.getnchannels(),
-            )
 
     def _transcribe_waveform(self, model: Any, waveform: np.ndarray) -> str:
         raw_result = self._run_inference(model, waveform)
