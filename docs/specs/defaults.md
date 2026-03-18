@@ -15,8 +15,9 @@
 ## 模型默认值
 - `gemini_embedding_model = gemini-embedding-2-preview`
 - `embedding_dimensions = 3072`
-- `asr_model_name = small`
-- `asr_device = auto`
+- `asr_model_name = iic/SenseVoiceSmall`
+- `asr_model_dir = ""`（为空表示首次按模型名自动下载）
+- `asr_device = cpu`
 - `asr_compute_type = int8`
 
 ## 环境变量默认值

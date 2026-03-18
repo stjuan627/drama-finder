@@ -26,8 +26,9 @@ dependencies = [
 
 [project.optional-dependencies]
 pipeline = [
-  "faster-whisper>=1.2.0",
-  "numpy>=2.3.0",
+  "funasr-onnx>=0.4.1",
+  "onnxruntime>=1.20.0",
+  "numpy>=1.26.0,<2.0.0",
   "scenedetect>=0.6.5.2",
 ]
 dev = [

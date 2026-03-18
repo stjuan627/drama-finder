@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     frame_index_interval_seconds: float = defaults.FRAME_INDEX_INTERVAL_SECONDS
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
     asr_model_name: str = defaults.ASR_MODEL_NAME
+    asr_model_dir: str = defaults.ASR_MODEL_DIR
     asr_device: str = defaults.ASR_DEVICE
     asr_compute_type: str = defaults.ASR_COMPUTE_TYPE
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
