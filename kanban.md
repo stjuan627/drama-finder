@@ -18,7 +18,6 @@
   - 片头片尾：`manifest` 明配排除区间
 - 当前成功闭环仍依赖 `INGEST_SKIP_EMBEDDINGS=true`
 - 当前主要技术债：
-  - 需要把 `ASR` 实现层从历史方案切到 `SenseVoice Small ONNX`
   - 需要把遗留 `scene/segment` 模型与表结构进一步降级为纯兼容层
   - 需要把 `frame embedding` 从阻塞式首轮入库改成后处理
   - 需要完善 `frame + ASR` 方案下的区间评测
@@ -112,10 +111,8 @@
   - 入库时能基于 manifest 排除 intro/outro 索引
   - 不对命中结果做时间平移
 
-## TODO
-
 ### K-033 ASR 切换到 `SenseVoice Small ONNX`
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：最高
 - 写入范围：`app/services/asr.py`、`app/core/`、`pyproject.toml`、`docs/specs/`
 - 目标：
@@ -128,7 +125,7 @@
   - `ingest` 与文本检索下游无需改接口即可继续工作
 
 ### K-025 3秒帧索引与代表图规范
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：`app/services/ingest.py`、`docs/specs/schema-spec.md`、`docs/specs/ingest-pipeline-spec.md`
 - 目标：
@@ -137,6 +134,8 @@
 - 完成定义：
   - 代表图和时间区间可用于人工质检
   - `frame` 主索引与 `shot` 质检职责清晰分离
+
+## TODO
 
 ### K-026 embedding 后处理化
 - 状态：`TODO`
@@ -190,7 +189,7 @@
   - 文本路径优先不依赖 Gemini
 
 ## 推荐的下一个开发顺序
-1. 完成 `K-033`，切换到 `SenseVoice Small ONNX`
-2. 完成 `K-025`，落实 `3s frame` 索引与代表图职责划分
-3. 完成 `K-026`，把 embedding 变成 frame 级后处理
-4. 完成 `K-027/K-028`，再做检索与评测
+1. 完成 `K-026`，把 embedding 变成 frame 级后处理
+2. 完成 `K-027`，把检索链路收口为稳定区间返回
+3. 完成 `K-028`，补齐区间命中评测
+4. 视演示需要推进 `K-029`

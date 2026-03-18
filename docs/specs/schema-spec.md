@@ -48,7 +48,7 @@
   - `representative_frame_paths jsonb not null`
   - `raw_metadata jsonb not null`
 - 说明：
-  - 当前实现默认写入 `first + mid` 两张代表图
+  - 当前实现固定写入 `first + mid` 两张代表图
   - `shot` 对应的 `asr_text` 当前保存在 `raw_metadata.asr_text`
 
 ## frames
@@ -64,7 +64,7 @@
   - `embedding vector(3072) null`
   - `raw_metadata jsonb not null`
 - 说明：
-  - 默认按 `3s` 一帧抽样
+  - 主索引固定按 `3s` 一帧抽样
   - `raw_metadata.index_excluded=true` 的帧不参与主检索
 
 ## 索引约定
@@ -79,6 +79,7 @@
 - 同一 `episode_pk` 重新入库时，先删除旧 `shots/frames`
 - `series` 与 `episodes` 为上游事实，不在重跑时删除
 - `ingest_jobs` 保留历史记录，不覆盖历史任务行
+- 当前重跑覆盖边界只包含主链路 `shots/frames`，不承担历史兼容层 `scenes/segments` 清理责任
 
 ## 当前实现说明
 - 历史 `scenes/segments` 结构可能仍存在于数据库中，但不再参与当前主链路。

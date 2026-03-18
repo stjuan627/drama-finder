@@ -14,7 +14,6 @@ from app.models.base import JobStage, JobStatus
 from app.models.episode import Episode
 from app.models.frame import Frame
 from app.models.ingest_job import IngestJob
-from app.models.segment import Segment
 from app.models.series import Series
 from app.models.shot import Shot
 from app.schemas.ingest import IngestEpisodeRequest
@@ -28,6 +27,8 @@ from app.services.storage import StorageService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+FRAME_INDEX_INTERVAL_SECONDS = 3.0
+SHOT_REPRESENTATIVE_FRAME_LABELS: tuple[str, str] = ("first", "mid")
 
 
 class IngestService:
@@ -154,11 +155,11 @@ class IngestPipeline:
             frame_paths = self.ffmpeg_service.extract_frames(
                 video_path,
                 paths.frames,
-                fps=f"1/{settings.frame_index_interval_seconds:g}",
+                fps=f"1/{FRAME_INDEX_INTERVAL_SECONDS:g}",
             )
             frames_manifest_path.write_text(
                 json.dumps(
-                    self._build_frame_manifest(frame_paths, settings.frame_index_interval_seconds),
+                    self._build_frame_manifest(frame_paths, FRAME_INDEX_INTERVAL_SECONDS),
                     ensure_ascii=False,
                     indent=2,
                 ),
@@ -197,7 +198,7 @@ class IngestPipeline:
                 "shot_count": len(persisted_shots),
                 "frame_count": len(persisted_frames),
                 "index_excluded_ranges": excluded_ranges,
-                "frame_index_interval_seconds": settings.frame_index_interval_seconds,
+                "frame_index_interval_seconds": FRAME_INDEX_INTERVAL_SECONDS,
             }
             db.add(job)
             db.commit()
@@ -230,12 +231,19 @@ class IngestPipeline:
             end_ts = float(shot["end"])
             mid_ts = start_ts if end_ts <= start_ts else start_ts + (end_ts - start_ts) / 2
 
-            timestamps = [("first", start_ts), ("mid", mid_ts)]
+            timestamps = (
+                (SHOT_REPRESENTATIVE_FRAME_LABELS[0], start_ts),
+                (SHOT_REPRESENTATIVE_FRAME_LABELS[1], mid_ts),
+            )
             representative_paths: list[str] = []
-            for label, timestamp in timestamps[: settings.representative_frames_per_shot]:
+            for label, timestamp in timestamps:
                 output_path = frames_dir / f"shot_{shot['shot_index']:06d}_{label}.jpg"
                 if not output_path.exists():
-                    self.ffmpeg_service.extract_frame_at_timestamp(video_path, output_path, timestamp)
+                    self.ffmpeg_service.extract_frame_at_timestamp(
+                        video_path,
+                        output_path,
+                        timestamp,
+                    )
                 representative_paths.append(str(output_path))
             shot["representative_frame_paths"] = representative_paths
         return shots
@@ -243,7 +251,6 @@ class IngestPipeline:
     @staticmethod
     def _replace_episode_artifacts(db: Session, episode_pk: UUID) -> None:
         db.execute(delete(Frame).where(Frame.episode_pk == episode_pk))
-        db.execute(delete(Segment).where(Segment.episode_pk == episode_pk))
         db.execute(delete(Shot).where(Shot.episode_pk == episode_pk))
         db.commit()
 
@@ -293,7 +300,7 @@ class IngestPipeline:
         duration_seconds: float,
     ) -> list[Frame]:
         persisted: list[Frame] = []
-        interval = float(settings.frame_index_interval_seconds)
+        interval = FRAME_INDEX_INTERVAL_SECONDS
         for index, frame_path in enumerate(frame_paths):
             frame_ts = round(index * interval, 3)
             if frame_ts > duration_seconds:
@@ -339,7 +346,10 @@ class IngestPipeline:
         return persisted
 
     @staticmethod
-    def _build_frame_manifest(frame_paths: list[Path], interval_seconds: float) -> list[dict[str, float | str]]:
+    def _build_frame_manifest(
+        frame_paths: list[Path],
+        interval_seconds: float,
+    ) -> list[dict[str, float | str]]:
         return [
             {
                 "frame_index": index,
