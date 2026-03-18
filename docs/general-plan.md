@@ -6,7 +6,7 @@
 - 第一版不再引入 `scene/segment` 作为主检索层。
 - 图片路径固定走 `3 秒一截图` 的低频 `frame` 索引，约等于 `0.33fps`。
 - 文本路径固定走 `ASR` 文本，直接基于时间对齐后的文本片段或 `shot` 聚合文本返回区间。
-- `ASR` 实现层定稿为 `SenseVoice Small ONNX`，默认使用量化模型并优先面向 `CPU`。
+- `ASR` 实现层定稿为 `SenseVoice Small ONNX`，默认通过外部 `Node.js + sherpa-onnx` 流式 CLI 执行，并优先面向 `CPU`。
 
 ## 核心设计
 1. 入库与切分
@@ -14,14 +14,14 @@
 - `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
 - `ASR` 首选 `SenseVoice Small ONNX`，默认配置为：
   - 模型：`iic/SenseVoiceSmall`
-  - 推理：`ONNX`
+  - 推理：`Node.js + sherpa-onnx`
   - 量化：开启
   - 设备：`CPU`
   - CPU 线程：默认 `2`
 - 为避免长音频整段送入 ASR 造成内存峰值过高，默认链路改为：
-  - 先做 `VAD`
-  - 再按流式 chunk 推进
-  - 最后按语音段逐段调用 `SenseVoice Small ONNX`
+  - `ffmpeg` 流式解码到 `16k mono PCM`
+  - `Silero VAD` 小窗推进
+  - 检出语音段后立刻调用 `SenseVoice Small ONNX`
 - 第一版继续保持 `ASR` 产物结构为 `[{start, end, text}]`，不改入库和检索下游契约。
 - 每个 `shot` 默认保存 `first / mid` 两张代表图，用于质检、人工确认和文本命中后的证据展示。
 - 主检索层拆成两条：

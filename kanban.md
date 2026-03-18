@@ -16,6 +16,7 @@
   - 图片路径：`3s frame`
   - 文本路径：`ASR text`
   - 片头片尾：`manifest` 明配排除区间
+- `ASR` 默认后端已切到：`Node.js + sherpa-onnx + Silero VAD`
 - 当前成功闭环仍依赖 `INGEST_SKIP_EMBEDDINGS=true`
 - 当前主要技术债：
   - 需要把遗留 `scene/segment` 模型与表结构进一步降级为纯兼容层

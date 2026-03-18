@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 import re
+import subprocess
 import tempfile
 import wave
 from pathlib import Path
@@ -24,6 +26,57 @@ class ASRService:
         self._vad_model: Any | None = None
 
     def transcribe(self, audio_path: Path) -> list[dict[str, Any]]:
+        if settings.asr_backend.lower() == "node":
+            return self._transcribe_with_node(audio_path)
+        return self._transcribe_with_python(audio_path)
+
+    def _transcribe_with_node(self, audio_path: Path) -> list[dict[str, Any]]:
+        script_path = self._resolve_node_cli_path()
+        project_dir = settings.asr_node_project_dir.expanduser().resolve()
+        command = [
+            "node",
+            str(script_path),
+            "--input",
+            str(audio_path),
+            "--project-dir",
+            str(project_dir),
+            "--cores",
+            str(settings.asr_cpu_cores),
+        ]
+        if settings.asr_node_model_dir is not None:
+            command.extend(["--model-dir", str(settings.asr_node_model_dir.expanduser())])
+        if settings.asr_node_vad_model_path is not None:
+            command.extend(
+                ["--vad-model", str(settings.asr_node_vad_model_path.expanduser())]
+            )
+
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+        if not isinstance(payload, list):
+            raise RuntimeError("node ASR CLI did not return a list payload")
+        return [
+            {
+                "start": round(float(item["start"]), 3),
+                "end": round(float(item["end"]), 3),
+                "text": self._clean_text(str(item["text"])),
+            }
+            for item in payload
+            if isinstance(item, dict) and str(item.get("text", "")).strip()
+        ]
+
+    @staticmethod
+    def _resolve_node_cli_path() -> Path:
+        cli_path = settings.asr_node_cli_path.expanduser()
+        if cli_path.is_absolute():
+            return cli_path.resolve()
+        return (Path.cwd() / cli_path).resolve()
+
+    def _transcribe_with_python(self, audio_path: Path) -> list[dict[str, Any]]:
         model = self._load_model()
         vad_model = self._load_vad_model()
         return self._stream_transcribe(audio_path, vad_model, model)

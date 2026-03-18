@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 APP_NAME = "Drama Finder"
@@ -17,6 +18,7 @@ IMAGE_SEARCH_TOP_K = 10
 TEXT_SEARCH_TOP_K = 20
 FRAME_INDEX_INTERVAL_SECONDS = 3.0
 ASR_CONTEXT_WINDOW_SECONDS = 5
+ASR_BACKEND = "node"
 ASR_MODEL_NAME = "iic/SenseVoiceSmall"
 ASR_MODEL_DIR = ""
 ASR_VAD_MODEL_NAME = "funasr/fsmn-vad-onnx"
@@ -27,6 +29,10 @@ ASR_COMPUTE_TYPE = "int8"
 ASR_STREAM_CHUNK_SECONDS = 30
 ASR_VAD_MERGE_GAP_MS = 300
 ASR_SEGMENT_MAX_SECONDS = 30
+ASR_NODE_PROJECT_DIR = os.path.expanduser("~/works/tooling/coli")
+ASR_NODE_CLI_PATH = "scripts/node_stream_asr.mjs"
+ASR_NODE_MODEL_DIR = ""
+ASR_NODE_VAD_MODEL_PATH = ""
 INGEST_SKIP_EMBEDDINGS = False
 REPRESENTATIVE_FRAMES_PER_SHOT = 2
 LOW_CONFIDENCE_THRESHOLD = 0.35

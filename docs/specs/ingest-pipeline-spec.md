@@ -23,11 +23,12 @@
   - 使用 `ffmpeg` 抽取单声道 `16k wav`
 3. `asr`
   - 使用 `SenseVoice Small ONNX`
+  - 默认后端：`Node.js + sherpa-onnx`
   - 默认模型：`iic/SenseVoiceSmall`
   - 默认设备：`CPU`
   - 默认 CPU 线程：`2`
   - 默认量化：`int8`
-  - 先用 `VAD` 做语音段检测，再按流式 chunk 逐段送入 ASR，避免整段长音频一次性进模型
+  - 先用 `Silero VAD` 做小窗检测，再按流式 chunk 逐段送入 ASR，避免整段长音频一次性进模型
   - 输出：`artifacts/asr_segments.json`
   - 结构：`[{start, end, text}]`
 4. `shot_detection`

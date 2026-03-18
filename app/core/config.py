@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     text_search_top_k: int = defaults.TEXT_SEARCH_TOP_K
     frame_index_interval_seconds: float = defaults.FRAME_INDEX_INTERVAL_SECONDS
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
+    asr_backend: str = defaults.ASR_BACKEND
     asr_model_name: str = defaults.ASR_MODEL_NAME
     asr_model_dir: str = defaults.ASR_MODEL_DIR
     asr_vad_model_name: str = defaults.ASR_VAD_MODEL_NAME
@@ -47,6 +48,14 @@ class Settings(BaseSettings):
     asr_stream_chunk_seconds: int = defaults.ASR_STREAM_CHUNK_SECONDS
     asr_vad_merge_gap_ms: int = defaults.ASR_VAD_MERGE_GAP_MS
     asr_segment_max_seconds: int = defaults.ASR_SEGMENT_MAX_SECONDS
+    asr_node_project_dir: Path = Path(defaults.ASR_NODE_PROJECT_DIR)
+    asr_node_cli_path: Path = Path(defaults.ASR_NODE_CLI_PATH)
+    asr_node_model_dir: Path | None = (
+        Path(defaults.ASR_NODE_MODEL_DIR) if defaults.ASR_NODE_MODEL_DIR else None
+    )
+    asr_node_vad_model_path: Path | None = (
+        Path(defaults.ASR_NODE_VAD_MODEL_PATH) if defaults.ASR_NODE_VAD_MODEL_PATH else None
+    )
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
     representative_frames_per_shot: int = defaults.REPRESENTATIVE_FRAMES_PER_SHOT
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
