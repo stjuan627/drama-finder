@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from numbers import Real
 import subprocess
+from numbers import Real
 from pathlib import Path
 
 
@@ -66,7 +66,12 @@ class FFmpegService:
         )
         return sorted(output_dir.glob("frame_*.jpg"))
 
-    def extract_frame_at_timestamp(self, video_path: Path, output_path: Path, timestamp: float) -> Path:
+    def extract_frame_at_timestamp(
+        self,
+        video_path: Path,
+        output_path: Path,
+        timestamp: float,
+    ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         command = [
             "ffmpeg",

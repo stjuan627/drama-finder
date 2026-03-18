@@ -135,10 +135,8 @@
   - 代表图和时间区间可用于人工质检
   - `frame` 主索引与 `shot` 质检职责清晰分离
 
-## TODO
-
 ### K-026 embedding 后处理化
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：`app/services/gemini.py`、`app/services/ingest.py`、`docs/specs/defaults.md`
 - 目标：
@@ -150,7 +148,7 @@
   - 成本与耗时显著低于高密度 `1fps frame` 思路
 
 ### K-027 检索链路改造成区间返回
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：`app/services/retrieval.py`、`app/api/routes/search.py`、`docs/specs/api-spec.md`、`docs/specs/retrieval-spec.md`
 - 目标：
@@ -159,6 +157,8 @@
 - 完成定义：
   - 结果是可信区间
   - 不再默认追求秒级落点
+
+## TODO
 
 ### K-028 评测标准改成区间命中
 - 状态：`TODO`
@@ -189,7 +189,6 @@
   - 文本路径优先不依赖 Gemini
 
 ## 推荐的下一个开发顺序
-1. 完成 `K-026`，把 embedding 变成 frame 级后处理
-2. 完成 `K-027`，把检索链路收口为稳定区间返回
-3. 完成 `K-028`，补齐区间命中评测
-4. 视演示需要推进 `K-029`
+1. 完成 `K-028`，补齐区间命中评测
+2. 结合 `K-031` 做一次真实 `frame embedding` 线上验证
+3. 视演示需要推进 `K-029`

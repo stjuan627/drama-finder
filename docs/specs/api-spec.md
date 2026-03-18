@@ -34,6 +34,8 @@
 - 成功响应：
   - `200`
   - `SearchResponse`
+- 低可用场景：
+  - 当未配置 Gemini 或库内尚无可检索 `frame embedding` 时，返回 `200` 与 `low_confidence=true`，`hits=[]`
 
 ## `POST /search/text`
 - 请求体：

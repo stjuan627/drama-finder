@@ -15,6 +15,9 @@
   1. 上传图片生成 query embedding
   2. 查询 `Frame.embedding` 取 `image_search_top_k`
   3. 直接返回 `frame_ts ~ frame_ts+3s` 的区间候选
+- 可用性约定：
+  - `raw_metadata.index_excluded=true` 的帧不得参与返回
+  - 未配置 Gemini 或尚未补齐 `frame embedding` 时，返回 `low_confidence=true` 与空结果，不伪造高分命中
 - 返回结果应以 `matched_start_ts / matched_end_ts` 为主
 
 ## 文本检索

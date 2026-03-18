@@ -11,7 +11,7 @@ from app.models.frame import Frame
 from app.models.series import Series
 from app.models.shot import Shot
 from app.schemas.search import SearchHit, SearchImageResponse
-from app.services.gemini import GeminiEmbeddingService
+from app.services.gemini import GeminiConfigurationError, GeminiEmbeddingService
 
 settings = get_settings()
 
@@ -21,7 +21,10 @@ class RetrievalService:
         self.embedding_service = GeminiEmbeddingService()
 
     def search_image(self, db: Session, image_path: Path, limit: int = 3) -> SearchImageResponse:
-        query_embedding = self.embedding_service.embed_image(image_path)
+        try:
+            query_embedding = self.embedding_service.embed_image(image_path)
+        except GeminiConfigurationError:
+            return self._build_response([])
         hits = self._search_frames(db=db, query_embedding=query_embedding, limit=limit)
         return self._build_response(hits)
 
@@ -58,25 +61,46 @@ class RetrievalService:
         ).all()
 
         hits: list[SearchHit] = []
+        selected_ranges: dict[tuple[str, str], list[tuple[float, float]]] = {}
         for frame, frame_distance in rows:
+            if frame.raw_metadata.get("index_excluded") is True:
+                continue
+
             episode = db.get(Episode, frame.episode_pk)
             series = db.get(Series, episode.series_pk) if episode else None
             interval = float(frame.raw_metadata.get("sample_interval_seconds", 3.0))
+            key = (
+                series.series_id if series else "",
+                episode.episode_id if episode else "",
+            )
+            start_ts = frame.frame_ts
+            end_ts = frame.frame_ts + interval
+            existing_ranges = selected_ranges.get(key, [])
+            overlaps_existing_range = any(
+                start_ts < existing_end and end_ts > existing_start
+                for existing_start, existing_end in existing_ranges
+            )
+            if overlaps_existing_range:
+                continue
+
             score = max(
                 0.0,
                 min(0.99, 1 - float(frame_distance) / 2),
             )
             hits.append(
                 SearchHit(
-                    series_id=series.series_id if series else "",
-                    episode_id=episode.episode_id if episode else "",
-                    matched_start_ts=frame.frame_ts,
-                    matched_end_ts=frame.frame_ts + interval,
+                    series_id=key[0],
+                    episode_id=key[1],
+                    matched_start_ts=start_ts,
+                    matched_end_ts=end_ts,
                     score=score,
                     evidence_images=[frame.image_path],
                     evidence_text=[frame.context_asr_text] if frame.context_asr_text else [],
                 )
             )
+            selected_ranges.setdefault(key, []).append((start_ts, end_ts))
+            if len(hits) >= limit:
+                break
 
         hits.sort(key=lambda item: item.score, reverse=True)
         return hits[:limit]
