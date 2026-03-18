@@ -38,6 +38,22 @@
   - 失败样本列表
   - 处理时长汇总
 
+## 当前落地
+- 评测脚本：`scripts/evaluate_retrieval.py`
+- 输入格式：JSON 数组，每项至少包含：
+  - `sample_id`
+  - `series_id`
+  - `episode_id`
+  - `query_type`
+  - `gt_start_ts`
+  - `gt_end_ts`
+  - `image_path | query_text`
+  - `top_k` 可选，默认 `5`
+- 输出内容：
+  - `summary`
+  - `results`
+  - `failure_samples`
+
 ## 说明
 - 秒级误差不再是 V1 主验收指标。
 - 若后续增加局部高频回扫，可另加“局部细定位误差”作为次级指标。

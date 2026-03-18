@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 
-
 HTML_TEMPLATE = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -137,7 +136,11 @@ def frame_path(frames_dir: Path, second_index: int) -> Path:
     return frames_dir / f"frame_{second_index + 1:06d}.jpg"
 
 
-def resolve_three_frames(frames_dir: Path, start_ts: float, end_ts: float) -> list[tuple[str, Path]]:
+def resolve_three_frames(
+    frames_dir: Path,
+    start_ts: float,
+    end_ts: float,
+) -> list[tuple[str, Path]]:
     mid_ts = (start_ts + end_ts) / 2
     candidates = [
         ("start", frame_path(frames_dir, int(start_ts))),
@@ -153,21 +156,30 @@ def build_card(shot: dict, frames_dir: Path, output_dir: Path) -> str:
     end_ts = float(shot["end"])
     figures: list[str] = []
     for label, img_path in resolve_three_frames(frames_dir, start_ts, end_ts):
+        caption_ts = (
+            start_ts
+            if label == "start"
+            else end_ts if label == "end" else (start_ts + end_ts) / 2
+        )
         if img_path.exists():
             rel = Path(os.path.relpath(img_path, output_dir))
             figures.append(
-                f"<figure><img src=\"{html.escape(rel.as_posix())}\" alt=\"shot {shot_index} {label}\">"
-                f"<figcaption>{label} · {ts_to_label(start_ts if label == 'start' else end_ts if label == 'end' else (start_ts + end_ts) / 2)}</figcaption></figure>"
+                f"<figure><img src=\"{html.escape(rel.as_posix())}\" "
+                f"alt=\"shot {shot_index} {label}\">"
+                f"<figcaption>{label} · {ts_to_label(caption_ts)}</figcaption></figure>"
             )
         else:
             figures.append(
-                f"<figure><div style=\"aspect-ratio:16/9;border:1px dashed #ccbda7;border-radius:12px;\"></div>"
+                "<figure>"
+                "<div style=\"aspect-ratio:16/9;border:1px dashed #ccbda7;"
+                "border-radius:12px;\"></div>"
                 f"<figcaption>{label} · missing</figcaption></figure>"
             )
     return (
         "<article class=\"card\">"
         f"<div class=\"card-head\"><div class=\"shot-id\">shot #{shot_index}</div>"
-        f"<div class=\"time\">{ts_to_label(start_ts)} - {ts_to_label(end_ts)} ({end_ts - start_ts:.2f}s)</div></div>"
+        f"<div class=\"time\">{ts_to_label(start_ts)} - {ts_to_label(end_ts)} "
+        f"({end_ts - start_ts:.2f}s)</div></div>"
         f"<div class=\"frames\">{''.join(figures)}</div>"
         "</article>"
     )
