@@ -90,8 +90,4 @@ class GeminiEmbeddingService:
         return list(response.embeddings[0].values)
 
     def embed_frame_document(self, image_path: Path, context_text: str) -> list[float]:
-        return self.embed_multimodal(
-            text=context_text,
-            image_paths=[image_path],
-            task_type="RETRIEVAL_DOCUMENT",
-        )
+        return self.embed_image(image_path=image_path, task_type="RETRIEVAL_DOCUMENT")
