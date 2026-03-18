@@ -78,7 +78,7 @@ def test_search_text_returns_interval_hit() -> None:
         shot_index=1,
         start_ts=12.0,
         end_ts=18.0,
-        representative_frame_paths=["/tmp/shot_first.jpg", "/tmp/shot_mid.jpg"],
+        representative_frame_paths=[],
         raw_metadata={"asr_text": "皇上驾到", "index_excluded": False},
     )
     db = FakeSession(
@@ -95,6 +95,7 @@ def test_search_text_returns_interval_hit() -> None:
     assert len(response.hits) == 1
     assert response.hits[0].matched_start_ts == 12.0
     assert response.hits[0].matched_end_ts == 18.0
+    assert response.hits[0].evidence_images == []
 
 
 def test_search_image_returns_low_confidence_when_gemini_is_unavailable() -> None:

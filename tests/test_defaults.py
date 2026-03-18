@@ -4,7 +4,6 @@ from app.core.defaults import (
     FRAME_INDEX_INTERVAL_SECONDS,
     IMAGE_SEARCH_TOP_K,
     LOW_CONFIDENCE_THRESHOLD,
-    REPRESENTATIVE_FRAMES_PER_SHOT,
     TEXT_SEARCH_TOP_K,
 )
 
@@ -15,5 +14,4 @@ def test_defaults_are_positive() -> None:
     assert IMAGE_SEARCH_TOP_K > 0
     assert TEXT_SEARCH_TOP_K > 0
     assert FRAME_INDEX_INTERVAL_SECONDS > 0
-    assert REPRESENTATIVE_FRAMES_PER_SHOT == 2
     assert 0 < LOW_CONFIDENCE_THRESHOLD < 1

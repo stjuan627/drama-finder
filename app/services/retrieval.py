@@ -140,7 +140,7 @@ class RetrievalService:
                     matched_start_ts=shot.start_ts,
                     matched_end_ts=shot.end_ts,
                     score=score,
-                    evidence_images=shot.representative_frame_paths[:2],
+                    evidence_images=[],
                     evidence_text=[str(shot.raw_metadata.get("asr_text", ""))],
                 )
             )

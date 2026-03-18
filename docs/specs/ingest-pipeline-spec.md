@@ -34,25 +34,22 @@
 4. `shot_detection`
   - 优先使用 `PySceneDetect`
   - 输出：`artifacts/shots.json`
-5. `shot_keyframes`
-  - 每个 shot 固定生成 `first / mid` 代表图
-  - 用于人工质检与文本检索证据
-6. `frame_extraction`
+5. `frame_extraction`
   - 固定每 `3s` 抽一帧
   - 输出：`artifacts/indexed_frames.json`
-7. `embeddings`
+6. `embeddings`
   - 只对图片路径的 `frame` 生成主 embedding
   - 默认允许拆成后处理，不阻塞首轮入库
-8. `persist`
+7. `persist`
   - 先删旧 `shots/frames`
   - 再写新记录
 
 ## 关键规则
 - 全库不默认生成 `1fps` 检索索引，第一版固定 `3s` 一帧。
 - `frames/` 是图片主索引目录。
-- `shots` 负责底层切分事实与代表图质检，不承担图片主索引职责。
+- `shots` 只负责底层切分事实，不承担图片主索引职责。
 - 片头片尾通过 manifest 配置为索引排除区间，但返回时间戳仍沿用原始视频时间轴。
-- 已人工验证当前 shot 切分质量可接受，默认代表图策略固定为 `first + mid`。
+- 已人工验证当前 shot 切分质量可接受。
 
 ## 当前实现说明
 - 当前代码应以 `frames` 作为图片主索引，以 `ASR` 文本作为文本主路径。

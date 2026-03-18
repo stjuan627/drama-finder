@@ -22,7 +22,6 @@
   - 需要把遗留 `scene/segment` 模型与表结构进一步降级为纯兼容层
   - 需要把 `frame embedding` 从阻塞式首轮入库改成后处理
   - 需要完善 `frame + ASR` 方案下的区间评测
-  - 已确认 shot 质检可接受，后续应围绕 `first/mid` 双图继续收敛
 
 ## DONE
 
@@ -130,11 +129,9 @@
 - 优先级：高
 - 写入范围：`app/services/ingest.py`、`docs/specs/schema-spec.md`、`docs/specs/ingest-pipeline-spec.md`
 - 目标：
-  - 每个 shot 默认保存 `first/mid` 代表图
   - 图片主索引固定为 `3s` 一帧
 - 完成定义：
-  - 代表图和时间区间可用于人工质检
-  - `frame` 主索引与 `shot` 质检职责清晰分离
+  - `frame` 主索引固定为 `3s` 一帧
 
 ### K-026 embedding 后处理化
 - 状态：`DONE`

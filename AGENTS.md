@@ -10,13 +10,12 @@
 - 技术栈固定为 `Python + FastAPI + PostgreSQL + pgvector + Redis/RQ`。
 - 入库采用 `API 提交任务 + 本地后台 worker 离线处理`。
 - 媒体文件和中间产物固定落在本地文件系统，不接对象存储。
-- 文本来源只使用本地 `ASR`，当前默认用 `faster-whisper small` 做链路验证。
+- 文本来源只使用本地 `ASR`。
 - 第一版不做 OCR，不做画面文字检索。
 - 检索结构固定为：
   - `shot` 负责底层切分事实
   - `segment` 负责主召回和主返回
   - 全库不默认维护 `1fps frame` 主索引
-  - `shot` 默认只保留 `first/mid` 两张代表图用于主流程
 
 ## 事实来源与输入约定
 - 剧集基础元数据不能依赖文件名自动猜测。
@@ -44,11 +43,10 @@
   4. 本地 ASR
   5. 本地片头片尾检测与裁剪
   6. `PySceneDetect` 切 shot
-  7. 生成 `shot first/mid` 代表图
-  8. 合并 `segment`
-  9. `Gemini 3 Flash` 可选生成 segment 摘要
-  10. `gemini-embedding-2-preview` 可选生成 segment embedding
-  11. 写入数据库
+  7. 合并 `segment`
+  8. `Gemini 3 Flash` 可选生成 segment 摘要
+  9. `gemini-embedding-2-preview` 可选生成 segment embedding
+  10. 写入数据库
 - 入库按 `episode` 级幂等覆盖处理；同一集重跑时替换旧索引和旧元数据。
 - 失败任务保留中间产物，不做媒体文件回滚。
 - 当前允许跳过 embeddings 先完成闭环，但后续必须补回 segment 级 embedding。
@@ -57,7 +55,7 @@
 - 主库固定为 `PostgreSQL + pgvector`。
 - 核心表以 `series`、`episodes`、`ingest_jobs`、`shots`、`segments` 为主。
 - `frames` 只能作为调试或局部回扫辅助，不再作为默认全库主索引。
-- `shots` 必须保留，便于质检、排错和后续 segment 合并。
+- `shots` 必须保留，便于排错和后续 segment 合并。
 - 本地文件目录固定为：
   - `data/series/<series_id>/source/`
   - `data/series/<series_id>/audio/`
@@ -87,13 +85,11 @@
 ## 验收标准
 - 单集视频能稳定入库并生成可查询的 `shot` 和 `segment` 记录。
 - 查询结果能返回 `top1` 与 `top3` 区间候选。
-- `shot` 级质检默认以 `first/mid` 两张图为准，`end` 图不再作为主设计必需项。
 - 主方案与历史高密度 frame 基线可对照评测，但 frame 基线不再是主架构。
 - 整季评测目标：
   - `Top1 命中正确 segment >= 70%`
   - `Top5 命中正确 segment >= 90%`
   - 返回区间覆盖人工标注片段
-
 ## 实施规则
 - 改动实现前，优先对齐本文件与 [docs/general-plan.md](/home/james/works/projects/drama-finder/docs/general-plan.md)。
 - 如出现冲突，以 `docs/general-plan.md` 的最新方案为准，并同步更新本文件。

@@ -10,7 +10,7 @@
 
 ## 核心设计
 1. 入库与切分
-- 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> shot detection -> shot 代表图生成 -> 3 秒采样 frame -> 可选 embedding -> 写库`。
+- 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> shot detection -> 3 秒采样 frame -> 可选 embedding -> 写库`。
 - `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
 - `ASR` 首选 `SenseVoice Small ONNX`，默认配置为：
   - 模型：`iic/SenseVoiceSmall`
@@ -23,7 +23,6 @@
   - `Silero VAD` 小窗推进
   - 检出语音段后立刻调用 `SenseVoice Small ONNX`
 - 第一版继续保持 `ASR` 产物结构为 `[{start, end, text}]`，不改入库和检索下游契约。
-- 每个 `shot` 默认保存 `first / mid` 两张代表图，用于质检、人工确认和文本命中后的证据展示。
 - 主检索层拆成两条：
   - 图片检索：`frame`
   - 文本检索：`ASR text`
@@ -37,7 +36,7 @@
 3. 检索结构
 - 图片检索入口改为低频 `frame`，固定 `3s` 一帧。
 - 文本检索入口改为 `ASR` 文本，不再引入 `scene/segment` 中间层。
-- `shot` 继续保留为底层切分事实与质检结构，但不是图片主索引。
+- `shot` 继续保留为底层切分事实，但不是图片主索引。
 - 默认检索流程：
   1. 图片查询生成 query embedding
   2. 查询 `frame` topK
@@ -49,7 +48,6 @@
 - 默认不做高密度 `1fps frame embedding`。
 - 默认优先做：
   - `3s frame embedding`
-  - `shot first/mid` 代表图
   - `ASR` 文本
 - embedding 主要服务图片路径；文本路径优先依赖 `ASR` 文本本身。
 - 当前为尽快验证真实链路，允许本地启用 `INGEST_SKIP_EMBEDDINGS=true`。
@@ -66,8 +64,6 @@
 - `shots` 保存：
   - `start_ts`
   - `end_ts`
-  - `first_frame_path`
-  - `mid_frame_path`
   - `asr_text`
 - `frames` 保存：
   - `frame_ts`
@@ -84,7 +80,6 @@
 ## 测试与验收
 - 入库验收：
   - 单集视频能稳定产出 `shots` 与 `frames`
-  - `shot` 有代表图
   - `manifest` 中的片头片尾配置能影响索引排除范围
 - 检索验收：
   - 返回结果必须是可信区间
@@ -97,8 +92,7 @@
 
 ## 当前实现与目标差异
 - 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，接下来主链改为 `frame + ASR text`。
-- 已人工验证 `ep01` 的 shot 质检结果，当前切分质量可接受。
-- 当前经验结论是：大多数 shot 用 `first + mid` 两张图已经足够表达画面连续性。
+- 已人工验证 `ep01` 的 shot 切分结果，当前切分质量可接受。
 - 当前真实产物里：
   - `shots` 可用
   - `frames` 需要恢复为图片主索引

@@ -11,7 +11,6 @@
 - `audio_extraction`
 - `asr`
 - `shot_detection`
-- `shot_keyframes`
 - `frame_extraction`
 - `embeddings`
 - `persist`

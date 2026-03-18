@@ -28,7 +28,6 @@ from app.services.storage import StorageService
 logger = logging.getLogger(__name__)
 settings = get_settings()
 FRAME_INDEX_INTERVAL_SECONDS = 3.0
-SHOT_REPRESENTATIVE_FRAME_LABELS: tuple[str, str] = ("first", "mid")
 
 
 class IngestService:
@@ -61,7 +60,7 @@ class IngestService:
             status=JobStatus.QUEUED,
             current_stage=JobStage.MANIFEST,
             progress_current=0,
-            progress_total=7,
+            progress_total=6,
             attempt=1 if existing is None else existing.attempt + 1,
             artifacts={},
         )
@@ -148,10 +147,9 @@ class IngestPipeline:
                     encoding="utf-8",
                 )
 
-            self._update_stage(db, job, JobStage.SHOT_KEYFRAMES, 4)
-            shots = self._attach_representative_frames(video_path, paths.frames, shots)
+            self._remove_legacy_shot_frames(paths.frames)
 
-            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 5)
+            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 4)
             frame_paths = self.ffmpeg_service.extract_frames(
                 video_path,
                 paths.frames,
@@ -166,7 +164,7 @@ class IngestPipeline:
                 encoding="utf-8",
             )
 
-            self._update_stage(db, job, JobStage.EMBEDDINGS, 6)
+            self._update_stage(db, job, JobStage.EMBEDDINGS, 5)
             self._replace_episode_artifacts(db, episode.id)
             persisted_shots = self._persist_shots(
                 db=db,
@@ -188,7 +186,7 @@ class IngestPipeline:
                 1 for frame in persisted_frames if self._frame_needs_embedding(frame)
             )
 
-            self._update_stage(db, job, JobStage.PERSIST, 7)
+            self._update_stage(db, job, JobStage.PERSIST, 6)
             job.status = JobStatus.COMPLETED
             job.progress_current = job.progress_total
             job.finished_at = datetime.now(UTC)
@@ -225,33 +223,10 @@ class IngestPipeline:
         db.add(job)
         db.commit()
 
-    def _attach_representative_frames(
-        self,
-        video_path: Path,
-        frames_dir: Path,
-        shots: list[dict],
-    ) -> list[dict]:
-        for shot in shots:
-            start_ts = float(shot["start"])
-            end_ts = float(shot["end"])
-            mid_ts = start_ts if end_ts <= start_ts else start_ts + (end_ts - start_ts) / 2
-
-            timestamps = (
-                (SHOT_REPRESENTATIVE_FRAME_LABELS[0], start_ts),
-                (SHOT_REPRESENTATIVE_FRAME_LABELS[1], mid_ts),
-            )
-            representative_paths: list[str] = []
-            for label, timestamp in timestamps:
-                output_path = frames_dir / f"shot_{shot['shot_index']:06d}_{label}.jpg"
-                if not output_path.exists():
-                    self.ffmpeg_service.extract_frame_at_timestamp(
-                        video_path,
-                        output_path,
-                        timestamp,
-                    )
-                representative_paths.append(str(output_path))
-            shot["representative_frame_paths"] = representative_paths
-        return shots
+    @staticmethod
+    def _remove_legacy_shot_frames(frames_dir: Path) -> None:
+        for output_path in frames_dir.glob("shot_*.jpg"):
+            output_path.unlink(missing_ok=True)
 
     @staticmethod
     def _replace_episode_artifacts(db: Session, episode_pk: UUID) -> None:
@@ -277,7 +252,7 @@ class IngestPipeline:
                 shot_index=shot["shot_index"],
                 start_ts=start_ts,
                 end_ts=end_ts,
-                representative_frame_paths=shot.get("representative_frame_paths", []),
+                representative_frame_paths=[],
                 raw_metadata={
                     **shot,
                     "asr_text": asr_text,

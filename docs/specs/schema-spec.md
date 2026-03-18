@@ -48,7 +48,7 @@
   - `representative_frame_paths jsonb not null`
   - `raw_metadata jsonb not null`
 - 说明：
-  - 当前实现固定写入 `first + mid` 两张代表图
+  - `representative_frame_paths` 仅保留为历史兼容字段，当前实现固定写入空数组
   - `shot` 对应的 `asr_text` 当前保存在 `raw_metadata.asr_text`
 
 ## frames

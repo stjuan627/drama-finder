@@ -57,7 +57,6 @@ class Settings(BaseSettings):
         Path(defaults.ASR_NODE_VAD_MODEL_PATH) if defaults.ASR_NODE_VAD_MODEL_PATH else None
     )
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
-    representative_frames_per_shot: int = defaults.REPRESENTATIVE_FRAMES_PER_SHOT
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
     job_timeout_seconds: int = defaults.JOB_TIMEOUT_SECONDS
     job_retry_count: int = defaults.JOB_RETRY_COUNT

@@ -4,7 +4,6 @@
 - `FRAME_INDEX_INTERVAL_SECONDS = 3`
 - `IMAGE_SEARCH_TOP_K = 10`
 - `TEXT_SEARCH_TOP_K = 20`
-- `SHOT_KEYFRAMES_PER_SHOT = 2`
 - `INTRO_DURATION_SECONDS = 0`
 - `OUTRO_DURATION_SECONDS = 0`
 - `JOB_TIMEOUT_SECONDS = 7200`
@@ -45,7 +44,6 @@
 - 变更任何默认值时，必须同步修改本文件和对应代码常量。
 - `FRAME_INDEX_INTERVAL_SECONDS = 3` 表示图片路径默认每 3 秒抽一帧。
 - `INTRO_DURATION_SECONDS` 与 `OUTRO_DURATION_SECONDS` 仅影响索引排除范围，不影响时间轴本身。
-- `SHOT_KEYFRAMES_PER_SHOT = 2` 对应默认 `first + mid` 两张代表图。
 - embedding 默认策略为后处理：
   - 首轮 ingest 只写入 `frames` 与 `pending_backfill` 状态，不阻塞等待 Gemini。
   - 后处理任务再批量补齐 `Frame.embedding`，失败帧保留 `embedding_status=failed` 供重试。
