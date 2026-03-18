@@ -97,6 +97,66 @@ def test_search_text_returns_interval_hit() -> None:
     assert response.hits[0].evidence_images == []
 
 
+def test_search_text_handles_punctuation_and_typos_better() -> None:
+    series, episode = build_series_and_episode()
+    shot = Shot(
+        id=uuid4(),
+        episode_pk=episode.id,
+        shot_index=1,
+        start_ts=12.0,
+        end_ts=18.0,
+        raw_metadata={"asr_text": "皇上，驾到！", "index_excluded": False},
+    )
+    db = FakeSession(
+        shots=[shot],
+        objects={
+            (Episode, episode.id): episode,
+            (Series, series.id): series,
+        },
+    )
+
+    response = RetrievalService().search_text(db, "皇上架到", limit=3)
+
+    assert response.low_confidence is False
+    assert len(response.hits) == 1
+    assert response.hits[0].matched_start_ts == 12.0
+
+
+def test_search_text_can_use_neighbor_context() -> None:
+    series, episode = build_series_and_episode()
+    shots = [
+        Shot(
+            id=uuid4(),
+            episode_pk=episode.id,
+            shot_index=1,
+            start_ts=10.0,
+            end_ts=12.0,
+            raw_metadata={"asr_text": "皇上", "index_excluded": False},
+        ),
+        Shot(
+            id=uuid4(),
+            episode_pk=episode.id,
+            shot_index=2,
+            start_ts=12.0,
+            end_ts=14.0,
+            raw_metadata={"asr_text": "驾到", "index_excluded": False},
+        ),
+    ]
+    db = FakeSession(
+        shots=shots,
+        objects={
+            (Episode, episode.id): episode,
+            (Series, series.id): series,
+        },
+    )
+
+    response = RetrievalService().search_text(db, "皇上驾到", limit=3)
+
+    assert response.low_confidence is False
+    assert len(response.hits) >= 1
+    assert {hit.matched_start_ts for hit in response.hits[:2]} == {10.0, 12.0}
+
+
 def test_search_image_returns_low_confidence_when_gemini_is_unavailable() -> None:
     service = RetrievalService()
 

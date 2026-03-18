@@ -166,10 +166,19 @@
 - 完成定义：
   - 评测结果更符合当前产品目标
 
+### K-031 Gemini 线上验证
+- 状态：`DONE`
+- 说明：
+  - 已用 `ep02` 验证 `frame embedding`
+  - 当前图片向量方案定稿为“纯图片 embedding”
+  - `ep02` 纯图片 embedding 评测结果：
+    - `Top1 = 72.22%`
+    - `Top5 = 88.89%`
+
 ## TODO
 
 ### K-034 文本检索轻量增强
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：高
 - 写入范围：`app/services/retrieval.py`、`app/db/`、`migrations/`、`tests/`、`docs/specs/retrieval-spec.md`
 - 目标：
@@ -177,7 +186,7 @@
   - 不引入 Elasticsearch / Solr / OpenSearch
   - 不为文本路径引入 embedding
 - 完成定义：
-  - 引入 `pg_trgm` 或等价轻量模糊召回能力
+  - 引入等价 trigram 轻量模糊召回能力
   - 查询文本有统一归一化
   - 支持 `shot` 邻接文本拼接召回
   - 文本检索评测指标相较当前基线有可见提升
@@ -203,16 +212,7 @@
 - 完成定义：
   - 非技术用户可以完成一次片段区间定位演示
 
-## BLOCKED
-
-### K-031 Gemini 线上验证
-- 状态：`TODO`
-- 说明：
-  - 真实 API key 已可用
-  - 当前主要需要验证 `frame embedding`
-  - 文本路径优先不依赖 Gemini
-
 ## 推荐的下一个开发顺序
-1. 完成 `K-031`，收口真实 `frame embedding` 成本与耗时
-2. 完成 `K-034`，增强文本检索鲁棒性
-3. 视演示需要推进 `K-029`
+1. 重试补齐 `ep02` 剩余失败的 `frame embedding`
+2. 视演示需要推进 `K-029`
+3. 低优先级再做 `K-035`

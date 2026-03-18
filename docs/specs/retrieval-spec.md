@@ -26,7 +26,7 @@
   3. 评分至少包含：
      - 子串命中
      - ngram overlap
-     - `pg_trgm` 相似度
+     - trigram 相似度（`pg_trgm` 或等价实现）
   4. 返回最相关的 `shot` 或文本片段区间
   5. 不引入 `scene/segment` 中间层
   6. 当前不再返回 `shot` 代表图证据

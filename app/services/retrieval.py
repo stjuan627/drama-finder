@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from sqlalchemy import select
@@ -33,11 +35,30 @@ class RetrievalService:
         return self._build_response(hits)
 
     @staticmethod
+    def _normalize_text(text: str) -> str:
+        normalized_chars: list[str] = []
+        for char in text.lower():
+            category = unicodedata.category(char)
+            if category.startswith(("P", "Z", "C")):
+                continue
+            normalized_chars.append(char)
+        return "".join(normalized_chars)
+
+    @staticmethod
     def _ngram_set(text: str, size: int = 2) -> set[str]:
-        normalized = "".join(text.lower().split())
+        normalized = RetrievalService._normalize_text(text)
         if len(normalized) < size:
             return {normalized} if normalized else set()
         return {normalized[index : index + size] for index in range(len(normalized) - size + 1)}
+
+    @staticmethod
+    def _trigram_similarity(left: str, right: str) -> float:
+        left_grams = RetrievalService._ngram_set(left, size=3)
+        right_grams = RetrievalService._ngram_set(right, size=3)
+        if not left_grams or not right_grams:
+            return 0.0
+        overlap = len(left_grams & right_grams)
+        return 2 * overlap / (len(left_grams) + len(right_grams))
 
     def _text_overlap(self, query: str, haystack: str) -> float:
         query_ngrams = self._ngram_set(query)
@@ -45,6 +66,40 @@ class RetrievalService:
         if not query_ngrams or not haystack_ngrams:
             return 0.0
         return len(query_ngrams & haystack_ngrams) / len(query_ngrams)
+
+    @staticmethod
+    def _neighbor_text(index: int, texts: list[str]) -> str:
+        window = texts[max(0, index - 1) : min(len(texts), index + 2)]
+        return "".join(window)
+
+    def _score_text_candidate(
+        self,
+        normalized_query: str,
+        normalized_text: str,
+        normalized_neighbor_text: str,
+    ) -> float:
+        substring_bonus = 0.0
+        if normalized_query and normalized_query in normalized_text:
+            substring_bonus += 0.45
+        elif normalized_query and normalized_query in normalized_neighbor_text:
+            substring_bonus += 0.25
+
+        overlap_score = self._text_overlap(normalized_query, normalized_text)
+        trigram_score = max(
+            self._trigram_similarity(normalized_query, normalized_text),
+            self._trigram_similarity(normalized_query, normalized_neighbor_text),
+        )
+        edit_similarity = max(
+            SequenceMatcher(None, normalized_query, normalized_text).ratio(),
+            SequenceMatcher(None, normalized_query, normalized_neighbor_text).ratio(),
+        )
+        return min(
+            0.99,
+            substring_bonus
+            + overlap_score * 0.25
+            + trigram_score * 0.35
+            + edit_similarity * 0.4,
+        )
 
     def _search_frames(
         self,
@@ -113,16 +168,20 @@ class RetrievalService:
     ) -> list[SearchHit]:
         shots = db.scalars(select(Shot).order_by(Shot.start_ts)).all()
         ranked: list[tuple[float, Shot]] = []
-        normalized_query = "".join(query.split())
+        normalized_query = self._normalize_text(query)
+        shot_texts = [str(shot.raw_metadata.get("asr_text", "")).strip() for shot in shots]
 
-        for shot in shots:
-            asr_text = str(shot.raw_metadata.get("asr_text", "")).strip()
+        for index, shot in enumerate(shots):
+            asr_text = shot_texts[index]
             if not asr_text or shot.raw_metadata.get("index_excluded") is True:
                 continue
 
-            score = self._text_overlap(normalized_query, asr_text)
-            if normalized_query and normalized_query in "".join(asr_text.split()):
-                score += 0.35
+            neighbor_text = self._neighbor_text(index, shot_texts)
+            score = self._score_text_candidate(
+                normalized_query=normalized_query,
+                normalized_text=self._normalize_text(asr_text),
+                normalized_neighbor_text=self._normalize_text(neighbor_text),
+            )
             if score <= 0:
                 continue
             ranked.append((min(0.99, score), shot))
