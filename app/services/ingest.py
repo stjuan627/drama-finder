@@ -184,6 +184,9 @@ class IngestPipeline:
                 excluded_ranges=excluded_ranges,
                 duration_seconds=duration_seconds,
             )
+            pending_frame_embeddings = sum(
+                1 for frame in persisted_frames if self._frame_needs_embedding(frame)
+            )
 
             self._update_stage(db, job, JobStage.PERSIST, 7)
             job.status = JobStatus.COMPLETED
@@ -199,6 +202,8 @@ class IngestPipeline:
                 "frame_count": len(persisted_frames),
                 "index_excluded_ranges": excluded_ranges,
                 "frame_index_interval_seconds": FRAME_INDEX_INTERVAL_SECONDS,
+                "embedding_mode": "deferred",
+                "pending_frame_embeddings": pending_frame_embeddings,
             }
             db.add(job)
             db.commit()
@@ -317,13 +322,6 @@ class IngestPipeline:
                 min(duration_seconds, frame_ts + interval),
                 excluded_ranges,
             )
-            embedding = None
-            if not settings.ingest_skip_embeddings and not index_excluded:
-                embedding = self.embedding_service.embed_multimodal(
-                    text=context_text,
-                    image_paths=[frame_path],
-                    task_type="RETRIEVAL_DOCUMENT",
-                )
 
             model = Frame(
                 episode_pk=episode.id,
@@ -336,14 +334,59 @@ class IngestPipeline:
                 raw_metadata={
                     "index_excluded": index_excluded,
                     "sample_interval_seconds": interval,
+                    "embedding_status": (
+                        "skipped_index_excluded" if index_excluded else "pending_backfill"
+                    ),
                 },
-                embedding=embedding,
+                embedding=None,
             )
             db.add(model)
             persisted.append(model)
 
         db.commit()
         return persisted
+
+    def backfill_frame_embeddings(
+        self,
+        db: Session,
+        episode_pk: UUID | str,
+        limit: int | None = None,
+    ) -> dict[str, int]:
+        target_episode_pk = UUID(str(episode_pk))
+        rows = db.scalars(
+            select(Frame)
+            .where(Frame.episode_pk == target_episode_pk)
+            .order_by(Frame.frame_index.asc())
+        ).all()
+        pending_frames = [frame for frame in rows if self._frame_needs_embedding(frame)]
+        if limit is not None:
+            pending_frames = pending_frames[: max(0, limit)]
+
+        updated = 0
+        failed = 0
+        for frame in pending_frames:
+            metadata = dict(frame.raw_metadata or {})
+            try:
+                frame.embedding = self.embedding_service.embed_frame_document(
+                    image_path=Path(frame.image_path),
+                    context_text=frame.context_asr_text,
+                )
+                metadata["embedding_status"] = "ready"
+                updated += 1
+            except Exception as exc:
+                metadata["embedding_status"] = "failed"
+                metadata["embedding_error"] = str(exc)
+                failed += 1
+                logger.exception("frame embedding backfill failed: frame_id=%s", frame.id)
+            frame.raw_metadata = metadata
+            db.add(frame)
+
+        db.commit()
+        return {
+            "pending": len(pending_frames),
+            "updated": updated,
+            "failed": failed,
+        }
 
     @staticmethod
     def _build_frame_manifest(
@@ -406,3 +449,8 @@ class IngestPipeline:
         if not isinstance(payload, list):
             raise ValueError(f"expected list payload in {path}, got {type(payload).__name__}")
         return payload
+
+    @staticmethod
+    def _frame_needs_embedding(frame: Frame) -> bool:
+        metadata = frame.raw_metadata or {}
+        return frame.embedding is None and metadata.get("index_excluded") is not True
