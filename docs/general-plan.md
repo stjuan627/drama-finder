@@ -36,12 +36,18 @@
 3. 检索结构
 - 图片检索入口改为低频 `frame`，固定 `3s` 一帧。
 - 文本检索入口改为 `ASR` 文本，不再引入 `scene/segment` 中间层。
+- 文本检索第一阶段不引入 Elasticsearch / Solr / OpenSearch，也不引入文本 embedding。
+- 文本检索增强固定走轻量方案：
+  - `PostgreSQL pg_trgm`
+  - 查询文本归一化
+  - `shot` 邻接文本拼接
+  - 规则分数 + trigram 相似度混合排序
 - `shot` 继续保留为底层切分事实，但不是图片主索引。
 - 默认检索流程：
   1. 图片查询生成 query embedding
   2. 查询 `frame` topK
   3. 返回 `frame_ts ~ frame_ts+3s` 的候选区间
-  4. 文本查询直接匹配 `ASR` 文本并返回对应区间
+  4. 文本查询对 `ASR` 文本做归一化与模糊召回，并返回对应区间
 - 后续如需更细定位，可在命中 `frame` 后局部回扫相邻帧或对应 `shot`，但这不是 V1 主链路。
 
 4. 成本与准确率策略
@@ -50,6 +56,7 @@
   - `3s frame embedding`
   - `ASR` 文本
 - embedding 主要服务图片路径；文本路径优先依赖 `ASR` 文本本身。
+- 文本路径优先用轻量模糊检索解决错别字、近音字和 ASR 误差，不额外引入语义向量成本。
 - 当前为尽快验证真实链路，允许本地启用 `INGEST_SKIP_EMBEDDINGS=true`。
 - `ASR` 路径优先保证 `CPU` 速度与部署简单性，不再以 `faster-whisper` 作为默认实现。
 

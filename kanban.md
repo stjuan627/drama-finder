@@ -168,6 +168,20 @@
 
 ## TODO
 
+### K-034 文本检索轻量增强
+- 状态：`TODO`
+- 优先级：高
+- 写入范围：`app/services/retrieval.py`、`app/db/`、`migrations/`、`tests/`、`docs/specs/retrieval-spec.md`
+- 目标：
+  - 不改技术栈前提下提升文本检索对错别字、近音字、ASR 噪声的鲁棒性
+  - 不引入 Elasticsearch / Solr / OpenSearch
+  - 不为文本路径引入 embedding
+- 完成定义：
+  - 引入 `pg_trgm` 或等价轻量模糊召回能力
+  - 查询文本有统一归一化
+  - 支持 `shot` 邻接文本拼接召回
+  - 文本检索评测指标相较当前基线有可见提升
+
 ### K-029 演示页面
 - 状态：`TODO`
 - 优先级：中
@@ -187,5 +201,6 @@
   - 文本路径优先不依赖 Gemini
 
 ## 推荐的下一个开发顺序
-1. 结合 `K-031` 做一次真实 `frame embedding` 线上验证
-2. 视演示需要推进 `K-029`
+1. 完成 `K-031`，收口真实 `frame embedding` 成本与耗时
+2. 完成 `K-034`，增强文本检索鲁棒性
+3. 视演示需要推进 `K-029`
