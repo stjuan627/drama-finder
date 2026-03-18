@@ -18,6 +18,7 @@
   - 片头片尾：`manifest` 明配排除区间
 - 当前成功闭环仍依赖 `INGEST_SKIP_EMBEDDINGS=true`
 - 当前主要技术债：
+  - 需要把 `ASR` 实现层从历史方案切到 `SenseVoice Small ONNX`
   - 需要把遗留 `scene/segment` 模型与表结构进一步降级为纯兼容层
   - 需要把 `frame embedding` 从阻塞式首轮入库改成后处理
   - 需要完善 `frame + ASR` 方案下的区间评测
@@ -113,6 +114,19 @@
 
 ## TODO
 
+### K-033 ASR 切换到 `SenseVoice Small ONNX`
+- 状态：`TODO`
+- 优先级：最高
+- 写入范围：`app/services/asr.py`、`app/core/`、`pyproject.toml`、`docs/specs/`
+- 目标：
+  - 用 `SenseVoice Small ONNX` 替换当前 `faster-whisper` 实现层
+  - 默认启用量化模型并面向 `CPU`
+  - 保持 `ASR` 输出结构为 `[{start, end, text}]`
+- 完成定义：
+  - 默认模型为 `iic/SenseVoiceSmall`
+  - 支持首次自动下载或显式本地模型目录
+  - `ingest` 与文本检索下游无需改接口即可继续工作
+
 ### K-025 3秒帧索引与代表图规范
 - 状态：`TODO`
 - 优先级：高
@@ -176,6 +190,7 @@
   - 文本路径优先不依赖 Gemini
 
 ## 推荐的下一个开发顺序
-1. 完成 `K-025`，落实 `3s frame` 索引与代表图职责划分
-2. 完成 `K-026`，把 embedding 变成 frame 级后处理
-3. 完成 `K-027/K-028`，再做检索与评测
+1. 完成 `K-033`，切换到 `SenseVoice Small ONNX`
+2. 完成 `K-025`，落实 `3s frame` 索引与代表图职责划分
+3. 完成 `K-026`，把 embedding 变成 frame 级后处理
+4. 完成 `K-027/K-028`，再做检索与评测

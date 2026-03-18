@@ -6,11 +6,18 @@
 - 第一版不再引入 `scene/segment` 作为主检索层。
 - 图片路径固定走 `3 秒一截图` 的低频 `frame` 索引，约等于 `0.33fps`。
 - 文本路径固定走 `ASR` 文本，直接基于时间对齐后的文本片段或 `shot` 聚合文本返回区间。
+- `ASR` 实现层定稿为 `SenseVoice Small ONNX`，默认使用量化模型并优先面向 `CPU`。
 
 ## 核心设计
 1. 入库与切分
 - 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> shot detection -> shot 代表图生成 -> 3 秒采样 frame -> 可选 embedding -> 写库`。
 - `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
+- `ASR` 首选 `SenseVoice Small ONNX`，默认配置为：
+  - 模型：`iic/SenseVoiceSmall`
+  - 推理：`ONNX`
+  - 量化：开启
+  - 设备：`CPU`
+- 第一版继续保持 `ASR` 产物结构为 `[{start, end, text}]`，不改入库和检索下游契约。
 - 每个 `shot` 默认保存 `first / mid` 两张代表图，用于质检、人工确认和文本命中后的证据展示。
 - 主检索层拆成两条：
   - 图片检索：`frame`
@@ -41,6 +48,7 @@
   - `ASR` 文本
 - embedding 主要服务图片路径；文本路径优先依赖 `ASR` 文本本身。
 - 当前为尽快验证真实链路，允许本地启用 `INGEST_SKIP_EMBEDDINGS=true`。
+- `ASR` 路径优先保证 `CPU` 速度与部署简单性，不再以 `faster-whisper` 作为默认实现。
 
 ## 数据模型与接口
 - 核心事实单位：
@@ -90,4 +98,5 @@
   - `shots` 可用
   - `frames` 需要恢复为图片主索引
   - `segments/scenes` 不再继续扩大责任边界
+- 当前 `ASR` 代码实现仍是历史方案，后续需要切换到 `SenseVoice Small ONNX`，但下游接口保持不变。
 - 后续开发应继续围绕 `frame + ASR text` 收敛，不再引入 `scene/segment` 主层。
