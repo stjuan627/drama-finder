@@ -11,5 +11,5 @@
 3. 创建 `ingest_jobs`
 4. RQ 入队
 5. worker 执行 pipeline
-6. 写入 `shots/segments`
-7. 查询接口消费 `segment` 级结果
+6. 写入 `shots/frames`
+7. 查询接口分别消费 `frame` 与 `ASR` 文本结果

@@ -14,7 +14,6 @@ class SearchHit(BaseModel):
     matched_start_ts: float
     matched_end_ts: float
     score: float
-    segment_summary: str | None
     evidence_images: list[str]
     evidence_text: list[str]
 

@@ -10,11 +10,9 @@
 - `manifest`
 - `audio_extraction`
 - `asr`
-- `intro_outro_trim`
 - `shot_detection`
 - `shot_keyframes`
-- `segment_build`
-- `segment_summary`
+- `frame_extraction`
 - `embeddings`
 - `persist`
 
@@ -31,12 +29,11 @@
 
 ## 错误处理
 - 失败时保留中间产物，不自动回滚媒体文件。
-- Gemini 返回空结构时不允许直接中断任务，应优先回退到本地默认规则。
 - 正式方案中，embedding 失败不应迫使整条入库重跑；应允许拆成后处理任务。
 
 ## 计数字段
-- `ingest_jobs` 可将 `shot_count / segment_count / frame_count` 记录到 `artifacts`。
+- `ingest_jobs` 可将 `shot_count / frame_count` 记录到 `artifacts`。
 
 ## 当前实现说明
-- 当前数据库阶段枚举仍保留历史值，但代码层已使用 `shot_keyframes / segment_build` 别名语义。
+- 当前数据库阶段枚举仍保留部分历史值，但代码层主路径已经切到 `frame_extraction`。
 - 后续如需要清理历史命名，应通过显式迁移完成枚举值收口。

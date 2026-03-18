@@ -35,6 +35,14 @@
   - 必填
   - 相对路径
   - 相对于 manifest 所在目录解析
+- `intro_duration_seconds: float`
+  - 选填
+  - 默认 `0`
+  - 表示片头在主索引中的排除时长
+- `outro_duration_seconds: float`
+  - 选填
+  - 默认 `0`
+  - 表示片尾在主索引中的排除时长
 - `episodes: Episode[]`
   - 必填
   - 最少 `1` 项
@@ -82,3 +90,4 @@
 - 已存在记录允许被 manifest 覆盖更新：`title`、`episode_no`、`source_path`、`source_filename`。
 - manifest 删除某集时，本期实现不自动删库；该行为由人工控制。
 - 第一版不要求在入库前手动把 `mkv` 全部转成 `mp4`。
+- `intro_duration_seconds` 与 `outro_duration_seconds` 只影响索引范围，不改变返回时间轴。

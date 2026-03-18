@@ -11,7 +11,7 @@
 - `episodes`
 - `ingest_jobs`
 - `shots`
-- `segments`
+- `frames`
 
 ## series
 - 主键：`id uuid`
@@ -51,24 +51,21 @@
   - 当前实现默认写入 `first + mid` 两张代表图
   - `shot` 对应的 `asr_text` 当前保存在 `raw_metadata.asr_text`
 
-## segments
+## frames
 - 主键：`id uuid`
-- 外键：`episode_pk -> episodes.id`
+- 外键：
+  - `episode_pk -> episodes.id`
+  - `shot_pk -> shots.id`
 - 字段：
-  - `segment_index int not null`
-  - `start_ts float not null`
-  - `end_ts float not null`
-  - `summary text null`
-  - `asr_text text not null`
-  - `representative_frame_paths jsonb not null`
-  - `shot_indexes jsonb not null`
+  - `frame_index int not null`
+  - `frame_ts float not null`
+  - `image_path text not null`
+  - `context_asr_text text not null`
   - `embedding vector(3072) null`
   - `raw_metadata jsonb not null`
-
-## 可选辅助表
-- `frames`
-  - 仅用于局部回扫或调试
-  - 不是正式 V1 主索引必需表
+- 说明：
+  - 默认按 `3s` 一帧抽样
+  - `raw_metadata.index_excluded=true` 的帧不参与主检索
 
 ## 索引约定
 - `series.series_id`
@@ -76,13 +73,13 @@
 - `ingest_jobs.series_pk`
 - `ingest_jobs.episode_pk`
 - `shots.episode_pk`
-- `segments.episode_pk`
+- `frames.episode_pk`
 
 ## 幂等覆盖规则
-- 同一 `episode_pk` 重新入库时，先删除旧 `shots/segments`
+- 同一 `episode_pk` 重新入库时，先删除旧 `shots/frames`
 - `series` 与 `episodes` 为上游事实，不在重跑时删除
 - `ingest_jobs` 保留历史记录，不覆盖历史任务行
 
 ## 当前实现说明
-- 当前代码中的 `Segment` 模型兼容映射到历史 `scenes` 表。
-- `frames` 仍然存在于 schema 中，但不再参与默认主检索链路。
+- 历史 `scenes/segments` 结构可能仍存在于数据库中，但不再参与当前主链路。
+- 当前主索引层是 `frames` 与 `shots(raw_metadata.asr_text)`。

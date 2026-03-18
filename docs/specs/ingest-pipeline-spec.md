@@ -5,7 +5,7 @@
 - 事实源：manifest
 - 输出：
   - 本地媒体产物
-  - `shots/segments`
+  - `shots/frames`
   - `ingest_jobs` 状态更新
 
 ## 目录结构
@@ -25,34 +25,28 @@
   - 使用 `faster-whisper`
   - 输出：`artifacts/asr_segments.json`
   - 结构：`[{start, end, text}]`
-4. `intro_outro_trim`
-  - 基于跨集重复片段检测识别片头片尾
-  - 当前允许先跳过，后续作为正式阶段补齐
-5. `shot_detection`
+4. `shot_detection`
   - 优先使用 `PySceneDetect`
   - 输出：`artifacts/shots.json`
-6. `shot_keyframes`
+5. `shot_keyframes`
   - 每个 shot 默认生成 `first / mid` 代表图
-  - 用于人工质检、segment 表示与检索证据
-7. `segment_build`
-  - 将连续 shot 合并为 `5s - 15s` 的可信区间
-8. `segment_summary`
-  - 使用 Gemini 为 segment 生成摘要或做合并复核
-  - Gemini 返回空结果时必须回退到本地默认规则
-9. `embeddings`
-  - 只对 `segment` 生成主 embedding
+  - 用于人工质检与文本检索证据
+6. `frame_extraction`
+  - 每 `3s` 抽一帧
+  - 输出：`artifacts/indexed_frames.json`
+7. `embeddings`
+  - 只对图片路径的 `frame` 生成主 embedding
   - 默认允许拆成后处理，不阻塞首轮入库
-10. `persist`
-  - 先删旧 `shots/segments`
+8. `persist`
+  - 先删旧 `shots/frames`
   - 再写新记录
 
 ## 关键规则
-- 全库不默认生成 `1fps` 检索索引。
-- `frames/` 可继续保留为调试或局部回扫辅助，但不再作为主检索层。
-- `segment` 目标是可读区间，不是尽量短的镜头切片。
-- 片头片尾必须在正式检索库中被裁掉或显式标记为可忽略。
+- 全库不默认生成 `1fps` 检索索引，第一版固定 `3s` 一帧。
+- `frames/` 是图片主索引目录。
+- 片头片尾通过 manifest 配置为索引排除区间，但返回时间戳仍沿用原始视频时间轴。
 - 已人工验证当前 shot 切分质量可接受，默认代表图策略固定为 `first + mid`。
 
 ## 当前实现说明
-- 当前代码已真实产出 `shots/segments`，并以 `segment` 作为主检索单位。
-- `frames` 目录仍用于保存 `shot` 代表图，不再表示全库 `1fps` 主索引。
+- 当前代码应以 `frames` 作为图片主索引，以 `ASR` 文本作为文本主路径。
+- `segments/scenes` 如仍存在，仅用于历史兼容，不再是正式 V1 方案。

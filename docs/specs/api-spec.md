@@ -67,10 +67,9 @@
 - `matched_start_ts: float`
 - `matched_end_ts: float`
 - `score: float`
-- `segment_summary: string | null`
 - `evidence_images: string[]`
 - `evidence_text: string[]`
 
 ## 兼容说明
 - 当前接口已切换为 `matched_start_ts / matched_end_ts` 区间字段。
-- 存量数据库仍可能使用历史 `scenes` 表，但 API 层统一暴露 `segment` 语义。
+- 存量数据库仍可能有历史 `scenes` 表，但 API 层不再暴露 `segment` 语义。

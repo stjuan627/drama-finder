@@ -15,6 +15,8 @@ def test_manifest_v1_can_parse() -> None:
         "season_label": "第一季",
         "language": "zh-CN",
         "video_root": "./videos",
+        "intro_duration_seconds": 120,
+        "outro_duration_seconds": 120,
         "episodes": [
             {
                 "episode_id": "ep01",
@@ -27,6 +29,8 @@ def test_manifest_v1_can_parse() -> None:
 
     manifest = SeriesManifest.model_validate_json(json.dumps(payload, ensure_ascii=False))
     assert manifest.series_id == "test-series"
+    assert manifest.intro_duration_seconds == 120
+    assert manifest.outro_duration_seconds == 120
     assert manifest.episodes[0].episode_no == 1
 
 
@@ -36,6 +40,8 @@ def test_manifest_service_loads_repo_example_with_mixed_extensions() -> None:
     manifest = ManifestService().load_manifest(manifest_path)
 
     assert manifest.series_id == "example-series"
+    assert manifest.intro_duration_seconds == 120
+    assert manifest.outro_duration_seconds == 120
     assert [episode.filename for episode in manifest.episodes] == [
         "01.mp4",
         "02.mp4",

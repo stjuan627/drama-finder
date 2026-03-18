@@ -19,7 +19,7 @@ from app.models.series import Series
 from app.models.shot import Shot
 from app.schemas.ingest import IngestEpisodeRequest
 from app.services.asr import ASRService
-from app.services.gemini import GeminiEmbeddingService, SegmentBuildService
+from app.services.gemini import GeminiEmbeddingService
 from app.services.manifest import ManifestError, ManifestService
 from app.services.media import FFmpegService
 from app.services.queue import QueueService
@@ -60,7 +60,7 @@ class IngestService:
             status=JobStatus.QUEUED,
             current_stage=JobStage.MANIFEST,
             progress_current=0,
-            progress_total=8,
+            progress_total=7,
             attempt=1 if existing is None else existing.attempt + 1,
             artifacts={},
         )
@@ -83,7 +83,6 @@ class IngestPipeline:
         self.ffmpeg_service = FFmpegService()
         self.asr_service = ASRService()
         self.shot_service = ShotDetectionService()
-        self.segment_build_service = SegmentBuildService()
         self.embedding_service = GeminiEmbeddingService()
 
     def run(self, db: Session, job_id: UUID | str) -> IngestJob:
@@ -106,6 +105,12 @@ class IngestPipeline:
             manifest,
             manifest_episode,
         )
+        duration_seconds = self.ffmpeg_service.probe_duration(video_path)
+        excluded_ranges = self._build_excluded_ranges(
+            duration_seconds=duration_seconds,
+            intro_seconds=manifest.intro_duration_seconds,
+            outro_seconds=manifest.outro_duration_seconds,
+        )
         paths = self.storage_service.ensure_episode_paths(series.series_id, episode.episode_id)
 
         try:
@@ -116,7 +121,7 @@ class IngestPipeline:
             audio_path = paths.audio / "audio.wav"
             asr_path = paths.artifacts / "asr_segments.json"
             shots_path = paths.artifacts / "shots.json"
-            segments_path = paths.artifacts / "segments.json"
+            frames_manifest_path = paths.artifacts / "indexed_frames.json"
 
             self._update_stage(db, job, JobStage.AUDIO_EXTRACTION, 1)
             if not audio_path.exists():
@@ -145,16 +150,39 @@ class IngestPipeline:
             self._update_stage(db, job, JobStage.SHOT_KEYFRAMES, 4)
             shots = self._attach_representative_frames(video_path, paths.frames, shots)
 
-            self._update_stage(db, job, JobStage.SEGMENT_BUILD, 5)
-            segments = self.segment_build_service.merge(shots, asr_segments)
-            segments_path.write_text(
-                json.dumps(segments, ensure_ascii=False, indent=2),
+            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 5)
+            frame_paths = self.ffmpeg_service.extract_frames(
+                video_path,
+                paths.frames,
+                fps=f"1/{settings.frame_index_interval_seconds:g}",
+            )
+            frames_manifest_path.write_text(
+                json.dumps(
+                    self._build_frame_manifest(frame_paths, settings.frame_index_interval_seconds),
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
 
             self._update_stage(db, job, JobStage.EMBEDDINGS, 6)
             self._replace_episode_artifacts(db, episode.id)
-            persisted_segments = self._persist_segments(db, episode, shots, segments, asr_segments)
+            persisted_shots = self._persist_shots(
+                db=db,
+                episode=episode,
+                shots=shots,
+                asr_segments=asr_segments,
+                excluded_ranges=excluded_ranges,
+            )
+            persisted_frames = self._persist_frames(
+                db=db,
+                episode=episode,
+                shots=persisted_shots,
+                frame_paths=frame_paths,
+                asr_segments=asr_segments,
+                excluded_ranges=excluded_ranges,
+                duration_seconds=duration_seconds,
+            )
 
             self._update_stage(db, job, JobStage.PERSIST, 7)
             job.status = JobStatus.COMPLETED
@@ -165,10 +193,11 @@ class IngestPipeline:
                 "audio_path": str(audio_path),
                 "asr_segments_path": str(asr_path),
                 "shots_path": str(shots_path),
-                "segments_path": str(segments_path),
-                "shot_count": len(shots),
-                "segment_count": len(persisted_segments),
-                "frame_count": 0,
+                "indexed_frames_path": str(frames_manifest_path),
+                "shot_count": len(persisted_shots),
+                "frame_count": len(persisted_frames),
+                "index_excluded_ranges": excluded_ranges,
+                "frame_index_interval_seconds": settings.frame_index_interval_seconds,
             }
             db.add(job)
             db.commit()
@@ -218,67 +247,89 @@ class IngestPipeline:
         db.execute(delete(Shot).where(Shot.episode_pk == episode_pk))
         db.commit()
 
-    def _persist_segments(
+    def _persist_shots(
         self,
         db: Session,
         episode: Episode,
         shots: list[dict],
-        segments: list[dict],
         asr_segments: list[dict],
-    ) -> list[Segment]:
-        shot_by_index = {shot["shot_index"]: shot for shot in shots}
-        persisted: list[Segment] = []
-
+        excluded_ranges: list[dict[str, float]],
+    ) -> list[Shot]:
+        persisted: list[Shot] = []
         for shot in shots:
             start_ts = float(shot["start"])
             end_ts = float(shot["end"])
             asr_text = self._collect_asr_text(asr_segments, start_ts, end_ts)
-            db.add(
-                Shot(
-                    episode_pk=episode.id,
-                    shot_index=shot["shot_index"],
-                    start_ts=start_ts,
-                    end_ts=end_ts,
-                    representative_frame_paths=shot.get("representative_frame_paths", []),
-                    raw_metadata={**shot, "asr_text": asr_text},
-                )
-            )
-        db.flush()
-
-        for segment in segments:
-            segment_shots = [
-                shot_by_index[index]
-                for index in segment.get("shot_indexes", [])
-                if index in shot_by_index
-            ]
-            if not segment_shots:
-                continue
-
-            start_ts = float(segment["start"])
-            end_ts = float(segment["end"])
-            asr_text = self._collect_asr_text(asr_segments, start_ts, end_ts)
-            frame_paths = [
-                frame_path
-                for shot in segment_shots
-                for frame_path in shot.get("representative_frame_paths", [])
-            ]
-            unique_frame_paths = list(dict.fromkeys(frame_paths))
-            embedding = None
-            if not settings.ingest_skip_embeddings:
-                embedding = self.embedding_service.embed_multimodal(
-                    text=f"{segment.get('summary', '')}\n{asr_text}".strip(),
-                    image_paths=[Path(path) for path in unique_frame_paths[:3]],
-                )
-
-            model = Segment(
+            model = Shot(
                 episode_pk=episode.id,
-                segment_index=int(segment["segment_index"]),
+                shot_index=shot["shot_index"],
                 start_ts=start_ts,
                 end_ts=end_ts,
-                summary=segment.get("summary", ""),
-                asr_text=asr_text,
-                representative_frame_paths=unique_frame_paths[:3],
-                raw_metadata=segment,
+                representative_frame_paths=shot.get("representative_frame_paths", []),
+                raw_metadata={
+                    **shot,
+                    "asr_text": asr_text,
+                    "index_excluded": self._overlaps_excluded_range(
+                        start_ts,
+                        end_ts,
+                        excluded_ranges,
+                    ),
+                },
+            )
+            db.add(model)
+            persisted.append(model)
+
+        db.flush()
+        return persisted
+
+    def _persist_frames(
+        self,
+        db: Session,
+        episode: Episode,
+        shots: list[Shot],
+        frame_paths: list[Path],
+        asr_segments: list[dict],
+        excluded_ranges: list[dict[str, float]],
+        duration_seconds: float,
+    ) -> list[Frame]:
+        persisted: list[Frame] = []
+        interval = float(settings.frame_index_interval_seconds)
+        for index, frame_path in enumerate(frame_paths):
+            frame_ts = round(index * interval, 3)
+            if frame_ts > duration_seconds:
+                break
+
+            matched_shot = self._match_shot(frame_ts, shots)
+            context_text = self._collect_asr_text(
+                asr_segments,
+                max(0.0, frame_ts - settings.asr_context_window_seconds),
+                frame_ts + settings.asr_context_window_seconds,
+            )
+            index_excluded = self._overlaps_excluded_range(
+                frame_ts,
+                min(duration_seconds, frame_ts + interval),
+                excluded_ranges,
+            )
+            embedding = None
+            if not settings.ingest_skip_embeddings and not index_excluded:
+                embedding = self.embedding_service.embed_multimodal(
+                    text=context_text,
+                    image_paths=[frame_path],
+                    task_type="RETRIEVAL_DOCUMENT",
+                )
+
+            model = Frame(
+                episode_pk=episode.id,
+                shot_pk=matched_shot.id if matched_shot else None,
+                scene_pk=None,
+                frame_index=index,
+                frame_ts=frame_ts,
+                image_path=str(frame_path),
+                context_asr_text=context_text,
+                raw_metadata={
+                    "index_excluded": index_excluded,
+                    "sample_interval_seconds": interval,
+                },
                 embedding=embedding,
             )
             db.add(model)
@@ -288,6 +339,17 @@ class IngestPipeline:
         return persisted
 
     @staticmethod
+    def _build_frame_manifest(frame_paths: list[Path], interval_seconds: float) -> list[dict[str, float | str]]:
+        return [
+            {
+                "frame_index": index,
+                "frame_ts": round(index * interval_seconds, 3),
+                "image_path": str(frame_path),
+            }
+            for index, frame_path in enumerate(frame_paths)
+        ]
+
+    @staticmethod
     def _collect_asr_text(asr_segments: list[dict], start_ts: float, end_ts: float) -> str:
         fragments = []
         for segment in asr_segments:
@@ -295,6 +357,38 @@ class IngestPipeline:
                 continue
             fragments.append(segment["text"])
         return " ".join(fragment.strip() for fragment in fragments if fragment.strip())
+
+    @staticmethod
+    def _build_excluded_ranges(
+        duration_seconds: float,
+        intro_seconds: float,
+        outro_seconds: float,
+    ) -> list[dict[str, float]]:
+        ranges: list[dict[str, float]] = []
+        if intro_seconds > 0:
+            ranges.append({"start": 0.0, "end": min(duration_seconds, float(intro_seconds))})
+        if outro_seconds > 0:
+            start_ts = max(0.0, duration_seconds - float(outro_seconds))
+            ranges.append({"start": start_ts, "end": duration_seconds})
+        return [item for item in ranges if item["end"] > item["start"]]
+
+    @staticmethod
+    def _overlaps_excluded_range(
+        start_ts: float,
+        end_ts: float,
+        excluded_ranges: list[dict[str, float]],
+    ) -> bool:
+        return any(
+            end_ts > excluded_range["start"] and start_ts < excluded_range["end"]
+            for excluded_range in excluded_ranges
+        )
+
+    @staticmethod
+    def _match_shot(frame_ts: float, shots: list[Shot]) -> Shot | None:
+        for shot in shots:
+            if shot.start_ts <= frame_ts <= shot.end_ts:
+                return shot
+        return None
 
     @staticmethod
     def _load_json(path: Path) -> list[dict]:

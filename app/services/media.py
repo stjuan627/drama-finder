@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from numbers import Real
 import subprocess
 from pathlib import Path
 
@@ -31,9 +32,22 @@ class FFmpegService:
         )
         return output_path
 
-    def extract_frames(self, video_path: Path, output_dir: Path, fps: int = 1) -> list[Path]:
+    def extract_frames(
+        self,
+        video_path: Path,
+        output_dir: Path,
+        fps: int | float | str = 1,
+    ) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
+        for existing in output_dir.glob("frame_*.jpg"):
+            existing.unlink()
+
         pattern = output_dir / "frame_%06d.jpg"
+        fps_expr = (
+            str(int(fps))
+            if isinstance(fps, Real) and float(fps).is_integer()
+            else str(fps)
+        )
         command = [
             "ffmpeg",
             "-y",
@@ -41,7 +55,7 @@ class FFmpegService:
             "-i",
             str(video_path),
             "-vf",
-            f"fps={fps}",
+            f"fps={fps_expr}",
             str(pattern),
         ]
         subprocess.run(

@@ -19,8 +19,8 @@
   - 运行入口代理
 
 ## 目标模型结构
-- `app/models/{series,episode,shot,segment,ingest_job}.py`
-- `frame` 仅作为可选辅助结构，后续不再扩大其职责
+- `app/models/{series,episode,shot,frame,ingest_job}.py`
+- `frame` 是图片主索引结构，`shot` 是质检与文本对齐结构
 
 ## 禁止事项
 - 不要再新增第二套模型元数据。

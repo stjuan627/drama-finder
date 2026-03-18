@@ -30,6 +30,8 @@ class SeriesManifest(BaseModel):
     season_label: str | None = Field(default=None, max_length=128)
     language: str = Field(default="zh-CN", max_length=32)
     video_root: str = Field(min_length=1, max_length=512)
+    intro_duration_seconds: float = Field(default=0, ge=0)
+    outro_duration_seconds: float = Field(default=0, ge=0)
     episodes: list[EpisodeManifest] = Field(default_factory=list, min_length=1)
 
     @field_validator("version")
@@ -38,4 +40,3 @@ class SeriesManifest(BaseModel):
         if value != "v1":
             raise ValueError("当前仅支持 manifest v1")
         return value
-

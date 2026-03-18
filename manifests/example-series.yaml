@@ -4,6 +4,8 @@ series_title: 示例剧集
 season_label: S1
 language: zh-CN
 video_root: ./example-series-videos
+intro_duration_seconds: 120
+outro_duration_seconds: 120
 episodes:
   - episode_id: ep01
     episode_no: 1

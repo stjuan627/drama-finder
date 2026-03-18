@@ -31,12 +31,11 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_embedding_model: str = defaults.GEMINI_EMBEDDING_MODEL
-    gemini_scene_model: str = defaults.GEMINI_SCENE_MODEL
     embedding_dimension: int = defaults.EMBEDDING_DIMENSION
 
-    segment_top_k: int = defaults.SEGMENT_TOP_K
-    segment_target_min_seconds: int = defaults.SEGMENT_TARGET_MIN_SECONDS
-    segment_target_max_seconds: int = defaults.SEGMENT_TARGET_MAX_SECONDS
+    image_search_top_k: int = defaults.IMAGE_SEARCH_TOP_K
+    text_search_top_k: int = defaults.TEXT_SEARCH_TOP_K
+    frame_index_interval_seconds: float = defaults.FRAME_INDEX_INTERVAL_SECONDS
     asr_context_window_seconds: int = defaults.ASR_CONTEXT_WINDOW_SECONDS
     asr_model_name: str = defaults.ASR_MODEL_NAME
     asr_device: str = defaults.ASR_DEVICE
