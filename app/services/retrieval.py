@@ -101,6 +101,46 @@ class RetrievalService:
             + edit_similarity * 0.4,
         )
 
+    @staticmethod
+    def _merge_nearby_hits(hits: list[SearchHit], gap_seconds: float = 6.0) -> list[SearchHit]:
+        if not hits:
+            return []
+
+        sorted_hits = sorted(
+            hits,
+            key=lambda item: (item.series_id, item.episode_id, item.matched_start_ts, -item.score),
+        )
+        merged: list[SearchHit] = []
+
+        for hit in sorted_hits:
+            if not merged:
+                merged.append(hit)
+                continue
+
+            previous = merged[-1]
+            same_episode = (
+                previous.series_id == hit.series_id
+                and previous.episode_id == hit.episode_id
+            )
+            close_enough = hit.matched_start_ts <= previous.matched_end_ts + gap_seconds
+            if same_episode and close_enough:
+                merged[-1] = SearchHit(
+                    series_id=previous.series_id,
+                    episode_id=previous.episode_id,
+                    matched_start_ts=min(previous.matched_start_ts, hit.matched_start_ts),
+                    matched_end_ts=max(previous.matched_end_ts, hit.matched_end_ts),
+                    score=max(previous.score, hit.score),
+                    evidence_images=[],
+                    evidence_text=list(
+                        dict.fromkeys(previous.evidence_text + hit.evidence_text)
+                    ),
+                )
+            else:
+                merged.append(hit)
+
+        merged.sort(key=lambda item: item.score, reverse=True)
+        return merged
+
     def _search_frames(
         self,
         db: Session,
@@ -204,7 +244,8 @@ class RetrievalService:
                 )
             )
 
-        return hits[:limit]
+        merged_hits = self._merge_nearby_hits(hits)
+        return merged_hits[:limit]
 
     @staticmethod
     def _build_response(hits: list[SearchHit]) -> SearchImageResponse:

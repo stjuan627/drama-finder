@@ -154,7 +154,8 @@ def test_search_text_can_use_neighbor_context() -> None:
 
     assert response.low_confidence is False
     assert len(response.hits) >= 1
-    assert {hit.matched_start_ts for hit in response.hits[:2]} == {10.0, 12.0}
+    assert response.hits[0].matched_start_ts == 10.0
+    assert response.hits[0].matched_end_ts == 14.0
 
 
 def test_search_image_returns_low_confidence_when_gemini_is_unavailable() -> None:

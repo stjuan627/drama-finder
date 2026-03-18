@@ -30,6 +30,7 @@
   4. 返回最相关的 `shot` 或文本片段区间
   5. 不引入 `scene/segment` 中间层
   6. 当前不再返回 `shot` 代表图证据
+  7. 返回前对同集相邻命中区间做合并，避免展示多个近似重复候选
 - 约束：
   - 第一阶段不引入 Elasticsearch / Solr / OpenSearch
   - 第一阶段不为文本路径引入 embedding
