@@ -182,6 +182,18 @@
   - 支持 `shot` 邻接文本拼接召回
   - 文本检索评测指标相较当前基线有可见提升
 
+### K-035 embedding 回填队列化
+- 状态：`TODO`
+- 优先级：低
+- 写入范围：`app/services/ingest.py`、`app/workers/`、`app/api/routes/`、`docs/specs/`
+- 目标：
+  - 将 `frame embedding` 回填从手动入口改成正式队列任务
+  - 支持任务进度、恢复和重试
+- 完成定义：
+  - 可以按 `episode` 提交独立 backfill job
+  - worker 可恢复未完成帧
+  - API 或脚本可查询回填状态
+
 ### K-029 演示页面
 - 状态：`TODO`
 - 优先级：中

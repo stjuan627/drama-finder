@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -325,6 +326,8 @@ class IngestPipeline:
         db: Session,
         episode_pk: UUID | str,
         limit: int | None = None,
+        commit_every: int = 20,
+        max_workers: int = 1,
     ) -> dict[str, int]:
         target_episode_pk = UUID(str(episode_pk))
         rows = db.scalars(
@@ -336,24 +339,67 @@ class IngestPipeline:
         if limit is not None:
             pending_frames = pending_frames[: max(0, limit)]
 
+        if not pending_frames:
+            return {
+                "pending": 0,
+                "updated": 0,
+                "failed": 0,
+            }
+
+        worker_count = max(1, max_workers)
+        payloads = [
+            (
+                frame.id,
+                Path(frame.image_path),
+                frame.context_asr_text,
+            )
+            for frame in pending_frames
+        ]
+        rows_by_id = {frame.id: frame for frame in pending_frames}
         updated = 0
         failed = 0
-        for frame in pending_frames:
-            metadata = dict(frame.raw_metadata or {})
-            try:
-                frame.embedding = self.embedding_service.embed_frame_document(
-                    image_path=Path(frame.image_path),
-                    context_text=frame.context_asr_text,
-                )
-                metadata["embedding_status"] = "ready"
-                updated += 1
-            except Exception as exc:
-                metadata["embedding_status"] = "failed"
-                metadata["embedding_error"] = str(exc)
-                failed += 1
-                logger.exception("frame embedding backfill failed: frame_id=%s", frame.id)
-            frame.raw_metadata = metadata
-            db.add(frame)
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_map = {
+                executor.submit(
+                    self._embed_frame_payload,
+                    image_path=image_path,
+                    context_text=context_text,
+                ): frame_id
+                for frame_id, image_path, context_text in payloads
+            }
+
+            for index, future in enumerate(as_completed(future_map), start=1):
+                frame_id = future_map[future]
+                frame = rows_by_id[frame_id]
+                metadata = dict(frame.raw_metadata or {})
+                try:
+                    frame.embedding = future.result()
+                    metadata["embedding_status"] = "ready"
+                    metadata.pop("embedding_error", None)
+                    updated += 1
+                except Exception as exc:
+                    metadata["embedding_status"] = "failed"
+                    metadata["embedding_error"] = str(exc)
+                    failed += 1
+                    logger.exception("frame embedding backfill failed: frame_id=%s", frame.id)
+                frame.raw_metadata = metadata
+                db.add(frame)
+
+                if commit_every > 0 and index % commit_every == 0:
+                    db.commit()
+                    logger.info(
+                        (
+                            "frame embedding backfill progress: "
+                            "episode_pk=%s processed=%s/%s updated=%s failed=%s workers=%s"
+                        ),
+                        target_episode_pk,
+                        index,
+                        len(pending_frames),
+                        updated,
+                        failed,
+                        worker_count,
+                    )
 
         db.commit()
         return {
@@ -361,6 +407,12 @@ class IngestPipeline:
             "updated": updated,
             "failed": failed,
         }
+
+    def _embed_frame_payload(self, image_path: Path, context_text: str) -> list[float]:
+        return self.embedding_service.embed_frame_document(
+            image_path=image_path,
+            context_text=context_text,
+        )
 
     @staticmethod
     def _build_frame_manifest(
