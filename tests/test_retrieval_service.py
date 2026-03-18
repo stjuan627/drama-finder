@@ -78,7 +78,6 @@ def test_search_text_returns_interval_hit() -> None:
         shot_index=1,
         start_ts=12.0,
         end_ts=18.0,
-        representative_frame_paths=[],
         raw_metadata={"asr_text": "皇上驾到", "index_excluded": False},
     )
     db = FakeSession(
@@ -120,7 +119,6 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
         shot_index=1,
         start_ts=0.0,
         end_ts=30.0,
-        representative_frame_paths=[],
         raw_metadata={"asr_text": "测试台词", "index_excluded": False},
     )
     objects = {

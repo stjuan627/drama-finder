@@ -252,7 +252,6 @@ class IngestPipeline:
                 shot_index=shot["shot_index"],
                 start_ts=start_ts,
                 end_ts=end_ts,
-                representative_frame_paths=[],
                 raw_metadata={
                     **shot,
                     "asr_text": asr_text,

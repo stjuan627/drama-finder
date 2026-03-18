@@ -21,11 +21,6 @@ class Shot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     shot_index: Mapped[int] = mapped_column(Integer, nullable=False)
     start_ts: Mapped[float] = mapped_column(Float, nullable=False)
     end_ts: Mapped[float] = mapped_column(Float, nullable=False)
-    representative_frame_paths: Mapped[list[str]] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=list,
-    )
     raw_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     episode = relationship("Episode", back_populates="shots")
