@@ -36,7 +36,7 @@ env UV_CACHE_DIR=.uv-cache uv sync --extra dev --extra pipeline
 4. 启动 API
 
 ```bash
-.venv/bin/uvicorn app.main:app --reload
+.venv/bin/python scripts/run_api.py
 ```
 
 5. 启动 worker
