@@ -25,10 +25,12 @@
 - `asr_stream_chunk_seconds = 30`
 - `asr_vad_merge_gap_ms = 300`
 - `asr_segment_max_seconds = 30`
+- `asr_enable_punctuation = false`
 - `asr_node_project_dir = ~/works/tooling/coli`
 - `asr_node_cli_path = scripts/node_stream_asr.mjs`
 - `asr_node_model_dir = ""`
 - `asr_node_vad_model_path = ""`
+- `asr_node_punc_model_path = ""`
 
 ## 环境变量默认值
 - `APP_HOST = 0.0.0.0`
@@ -50,4 +52,5 @@
 - 长音频 ASR 默认采用 `VAD + stream`：
   - `node` 后端默认走 `ffmpeg + Silero VAD + sherpa-onnx SenseVoice`
   - 检出语音段后立即识别，不再整段音频二次回读
+  - 如开启 `asr_enable_punctuation`，会在 Node 识别后对每段文本执行一次离线标点恢复
   - `python` 后端保留为兼容回退路径
