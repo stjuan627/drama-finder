@@ -159,6 +159,38 @@ def test_transcribe_requires_punctuation_model_path(monkeypatch, tmp_path: Path)
         assert "asr_node_punc_model_path" in str(exc)
 
 
+def test_normalize_node_segment_cleans_repeated_punctuation() -> None:
+    segment = ASRService()._normalize_node_segment(
+        {
+            "start": 1.0,
+            "end": 2.5,
+            "text": "娘 ，你也不必忧心，，还是去范家住？。",
+            "raw_text": "娘你也不必忧心，还是去范家住。",
+        }
+    )
+
+    assert segment == {
+        "start": 1.0,
+        "end": 2.5,
+        "text": "娘，你也不必忧心，还是去范家住？",
+        "raw_text": "娘你也不必忧心，还是去范家住。",
+    }
+
+
+def test_normalize_node_segment_collapses_ascii_and_cjk_periods() -> None:
+    segment = ASRService()._normalize_node_segment(
+        {
+            "start": 0.1,
+            "end": 0.9,
+            "text": "Yeah .。",
+            "raw_text": "Yeah.",
+        }
+    )
+
+    assert segment["text"] == "Yeah。"
+    assert segment["raw_text"] == "Yeah."
+
+
 def test_consume_stream_segment_merges_close_ranges() -> None:
     pending, flushed = ASRService()._consume_stream_segment(
         pending_segment=(1000, 2000),

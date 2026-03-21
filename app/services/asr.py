@@ -18,6 +18,18 @@ from app.core.config import get_settings
 settings = get_settings()
 
 _SENSEVOICE_TAG_RE = re.compile(r"<\|[^|]+?\|>")
+_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([,.;:!?，。！？；：])")
+_PUNCT_RUN_RE = re.compile(r"[,.!?，。！？；：]{2,}")
+_ASCII_TO_CJK_PUNCT = str.maketrans(
+    {
+        ",": "，",
+        ".": "。",
+        "?": "？",
+        "!": "！",
+        ";": "；",
+        ":": "：",
+    }
+)
 
 
 class ASRService:
@@ -74,12 +86,38 @@ class ASRService:
         segment = {
             "start": round(float(item["start"]), 3),
             "end": round(float(item["end"]), 3),
-            "text": self._clean_text(str(item["text"])),
+            "text": self._normalize_restored_text(str(item["text"])),
         }
         raw_text = item.get("raw_text")
         if raw_text is not None:
             segment["raw_text"] = self._clean_text(str(raw_text))
         return segment
+
+    def _normalize_restored_text(self, text: str) -> str:
+        normalized = self._clean_text(text)
+        if not normalized:
+            return ""
+        normalized = _SPACE_BEFORE_PUNCT_RE.sub(r"\1", normalized)
+        return _PUNCT_RUN_RE.sub(self._collapse_punctuation_run, normalized)
+
+    @staticmethod
+    def _collapse_punctuation_run(match: re.Match[str]) -> str:
+        run = match.group(0).translate(_ASCII_TO_CJK_PUNCT)
+        if "？" in run and "！" not in run:
+            return "？"
+        if "！" in run and "？" not in run:
+            return "！"
+        if "？" in run and "！" in run:
+            return run[-1]
+        if "。" in run:
+            return "。"
+        if "，" in run:
+            return "，"
+        if "；" in run:
+            return "；"
+        if "：" in run:
+            return "："
+        return run[-1]
 
     @staticmethod
     def _resolve_node_cli_path() -> Path:
