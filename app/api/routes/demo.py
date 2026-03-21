@@ -406,119 +406,44 @@ COMMON_HEAD = """<!doctype html>
     }
 
     .hit {
-      display: grid;
-      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-      gap: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
       border: 1px solid rgba(85, 54, 32, 0.12);
       border-radius: 22px;
       background: var(--panel-strong);
-      padding: 18px;
+      padding: 20px;
+      transition: transform .2s ease, box-shadow .2s ease;
     }
-
-    .hit-visual {
-      display: grid;
-      gap: 10px;
-      align-content: start;
-    }
-
-    .hit-main-image {
-      position: relative;
-      overflow: hidden;
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(232, 180, 135, 0.18), rgba(255,255,255,0.8));
-      border: 1px solid rgba(85, 54, 32, 0.08);
-      min-height: 168px;
-    }
-
-    .hit-main-image img {
-      display: block;
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      object-fit: cover;
-      background: rgba(255,255,255,0.75);
-    }
-
-    .image-fallback {
-      display: grid;
-      gap: 8px;
-      align-content: center;
-      min-height: 168px;
-      padding: 18px;
-      color: var(--muted);
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
-      line-height: 1.7;
-    }
-
-    .thumb-strip {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 2px;
-    }
-
-    .thumb {
-      position: relative;
-      flex: 0 0 76px;
-      overflow: hidden;
-      border-radius: 12px;
-      border: 1px solid rgba(85, 54, 32, 0.10);
-      background: rgba(255,255,255,0.82);
-    }
-
-    .thumb img {
-      display: block;
-      width: 100%;
-      aspect-ratio: 16 / 10;
-      object-fit: cover;
-      background: rgba(255,255,255,0.78);
-    }
-
-    .thumb-fallback {
-      display: grid;
-      place-items: center;
-      aspect-ratio: 16 / 10;
-      color: var(--muted);
-      font-size: 11px;
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
-    }
-
-    .evidence-paths {
-      display: grid;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--muted);
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
-      line-height: 1.6;
-    }
-
-    .path-chip {
-      display: inline-flex;
-      max-width: 100%;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(85, 54, 32, 0.12);
-      background: rgba(255,255,255,0.78);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .hit-copy {
-      display: grid;
-      gap: 12px;
-      align-content: start;
+    .hit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(60, 35, 18, 0.08);
     }
 
     .hit-head {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
       align-items: center;
+      gap: 12px;
     }
 
     .hit-title {
       font-size: 18px;
       font-weight: 700;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hit-time-range {
+      font-family: "IBM Plex Mono", monospace;
+      color: var(--accent);
+      background: rgba(232, 180, 135, 0.2);
+      padding: 2px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     .score {
@@ -526,49 +451,60 @@ COMMON_HEAD = """<!doctype html>
       font-size: 13px;
       font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
       white-space: nowrap;
-    }
-
-    .time-band {
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(232, 180, 135, 0.22);
-      color: var(--accent);
-      font-size: 13px;
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
-      font-weight: 700;
-    }
-
-    .kv {
-      display: grid;
-      gap: 8px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.7;
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
-    }
-
-    .evidence-block {
-      display: grid;
-      gap: 8px;
-      padding-top: 12px;
-      border-top: 1px dashed rgba(85, 54, 32, 0.15);
-    }
-
-    .evidence-label {
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 700;
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
+      opacity: 0.8;
     }
 
     .evidence-text {
-      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text);
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 12px;
+      border-left: 4px solid var(--accent-soft);
+    }
+
+    .hit-images-container {
+      margin-top: 4px;
+    }
+
+    .hit-images-list {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding: 4px 0 8px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent-soft) transparent;
+    }
+
+    .hit-image-item {
+      flex: 0 0 auto;
+      width: 200px;
+      aspect-ratio: 16 / 9;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(85, 54, 32, 0.1);
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .hit-image-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .hit-images-empty {
       font-size: 13px;
-      line-height: 1.8;
-      font-family: "IBM Plex Sans", "PingFang SC", sans-serif;
+      color: var(--muted);
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      border: 1px dashed rgba(85, 54, 32, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .muted {
@@ -783,10 +719,10 @@ SEARCH_SCRIPT = """
       const safePath = escapeHtml(path);
       const src = escapeHtml(resolveEvidenceUrl(path));
       return `
-        <img class="${className}" src="${src}" alt="${alt}"
-          onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
-        <div class="${fallbackClass}" hidden>图片暂不可见</div>
-        <div class="evidence-paths"><span class="path-chip" title="${safePath}">${safePath}</span></div>
+        <div class="hit-image-item">
+          <img src="${src}" alt="${alt}"
+            onerror="this.parentElement.style.display='none';">
+        </div>
       `;
     }
 
@@ -806,45 +742,28 @@ SEARCH_SCRIPT = """
         const texts = Array.isArray(hit.evidence_text) ? hit.evidence_text.filter(Boolean) : [];
         const safeSeries = escapeHtml(hit.series_id);
         const safeEpisode = escapeHtml(hit.episode_id);
-        const mainVisual = images.length
-          ? `<div class="hit-main-image">${renderImageBlock(images[0], "evidence-main", "image-fallback", "关联截图")}</div>`
-          : '<div class="hit-main-image"><div class="image-fallback">暂无关联截图<br>本次结果仍可根据区间与文本证据判断。</div></div>';
-        const thumbs = images.length > 1
-          ? `<div class="thumb-strip">${images.slice(1, 4).map((path) => {
-              const safePath = escapeHtml(path);
-              const src = escapeHtml(resolveEvidenceUrl(path));
-              return `
-                <div class="thumb" title="${safePath}">
-                  <img src="${src}" alt="关联截图缩略图"
-                    onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
-                  <div class="thumb-fallback" hidden>不可预览</div>
-                </div>
-              `;
-            }).join("")}</div>`
-          : "";
+        const timeRange = `${secondsToLabel(hit.matched_start_ts)} - ${secondsToLabel(hit.matched_end_ts)}`;
+        
+        const imagesHtml = images.length
+          ? `<div class="hit-images-list">${images.map(path => renderImageBlock(path, "", "", "证据截图")).join("")}</div>`
+          : `<div class="hit-images-empty">暂无关联截图证据</div>`;
 
         return `
           <article class="hit">
-            <div class="hit-visual">
-              ${mainVisual}
-              ${thumbs}
+            <div class="hit-head">
+              <div class="hit-title">
+                <span>${safeSeries} / ${safeEpisode}</span>
+                <span class="hit-time-range">${timeRange}</span>
+              </div>
+              <div class="score">score ${Number(hit.score).toFixed(4)}</div>
             </div>
-            <div class="hit-copy">
-              <div class="hit-head">
-                <div class="hit-title">候选 ${index + 1} · ${safeSeries} / ${safeEpisode}</div>
-                <div class="score">score ${Number(hit.score).toFixed(4)}</div>
-              </div>
-              <div class="time-band">
-                ${secondsToLabel(hit.matched_start_ts)} - ${secondsToLabel(hit.matched_end_ts)}
-              </div>
-              <div class="kv">
-                <div>秒值：${Number(hit.matched_start_ts).toFixed(2)} - ${Number(hit.matched_end_ts).toFixed(2)}</div>
-                <div>关联截图：${images.length ? `${images.length} 张` : "无"}</div>
-              </div>
-              <div class="evidence-block">
-                <div class="evidence-label">文本证据</div>
-                <div class="evidence-text">${texts.length ? texts.map(escapeHtml).join(" | ") : "无"}</div>
-              </div>
+            
+            <div class="evidence-text">
+              ${texts.length ? texts.map(escapeHtml).join(" | ") : "（无文本证据）"}
+            </div>
+
+            <div class="hit-images-container">
+              ${imagesHtml}
             </div>
           </article>
         `;

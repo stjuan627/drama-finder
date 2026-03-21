@@ -95,10 +95,7 @@ class RetrievalService:
         )
         return min(
             0.99,
-            substring_bonus
-            + overlap_score * 0.25
-            + trigram_score * 0.35
-            + edit_similarity * 0.4,
+            substring_bonus + overlap_score * 0.25 + trigram_score * 0.35 + edit_similarity * 0.4,
         )
 
     @staticmethod
@@ -119,8 +116,7 @@ class RetrievalService:
 
             previous = merged[-1]
             same_episode = (
-                previous.series_id == hit.series_id
-                and previous.episode_id == hit.episode_id
+                previous.series_id == hit.series_id and previous.episode_id == hit.episode_id
             )
             close_enough = hit.matched_start_ts <= previous.matched_end_ts + gap_seconds
             if same_episode and close_enough:
@@ -131,15 +127,96 @@ class RetrievalService:
                     matched_end_ts=max(previous.matched_end_ts, hit.matched_end_ts),
                     score=max(previous.score, hit.score),
                     evidence_images=[],
-                    evidence_text=list(
-                        dict.fromkeys(previous.evidence_text + hit.evidence_text)
-                    ),
+                    evidence_text=list(dict.fromkeys(previous.evidence_text + hit.evidence_text)),
                 )
             else:
                 merged.append(hit)
 
         merged.sort(key=lambda item: item.score, reverse=True)
         return merged
+
+    @staticmethod
+    def _frame_interval(frame: Frame) -> tuple[float, float]:
+        interval = float(
+            frame.raw_metadata.get("sample_interval_seconds", settings.frame_index_interval_seconds)
+        )
+        start_ts = frame.frame_ts
+        end_ts = frame.frame_ts + interval
+        return start_ts, end_ts
+
+    @classmethod
+    def _frame_overlaps_hit(cls, frame: Frame, start_ts: float, end_ts: float) -> bool:
+        frame_start_ts, frame_end_ts = cls._frame_interval(frame)
+        return frame_start_ts < end_ts and frame_end_ts > start_ts
+
+    @staticmethod
+    def _select_evidence_images(frames: list[Frame], max_images: int = 5) -> list[str]:
+        selected: list[str] = []
+        seen_paths: set[str] = set()
+        ordered_frames = sorted(
+            frames,
+            key=lambda frame: (frame.frame_ts, frame.frame_index, frame.image_path),
+        )
+        for frame in ordered_frames:
+            if frame.raw_metadata.get("index_excluded") is True:
+                continue
+            if frame.image_path in seen_paths:
+                continue
+            seen_paths.add(frame.image_path)
+            selected.append(frame.image_path)
+            if len(selected) >= max_images:
+                break
+        return selected
+
+    def _load_frames_for_text_hit(
+        self,
+        db: Session,
+        episode_pk: object,
+        start_ts: float,
+        end_ts: float,
+    ) -> list[Frame]:
+        frames = db.scalars(
+            select(Frame)
+            .where(Frame.episode_pk == episode_pk)
+            .order_by(Frame.frame_ts.asc(), Frame.frame_index.asc())
+        ).all()
+        return [
+            frame
+            for frame in frames
+            if self._frame_overlaps_hit(frame, start_ts=start_ts, end_ts=end_ts)
+        ]
+
+    def _attach_evidence_images_to_text_hits(
+        self,
+        db: Session,
+        hits: list[SearchHit],
+        episode_pks: dict[str, object],
+        max_images: int = 5,
+    ) -> list[SearchHit]:
+        attached_hits: list[SearchHit] = []
+        for hit in hits:
+            episode_pk = episode_pks.get(hit.episode_id)
+            evidence_images: list[str] = []
+            if episode_pk is not None:
+                frames = self._load_frames_for_text_hit(
+                    db,
+                    episode_pk=episode_pk,
+                    start_ts=hit.matched_start_ts,
+                    end_ts=hit.matched_end_ts,
+                )
+                evidence_images = self._select_evidence_images(frames, max_images=max_images)
+            attached_hits.append(
+                SearchHit(
+                    series_id=hit.series_id,
+                    episode_id=hit.episode_id,
+                    matched_start_ts=hit.matched_start_ts,
+                    matched_end_ts=hit.matched_end_ts,
+                    score=hit.score,
+                    evidence_images=evidence_images,
+                    evidence_text=hit.evidence_text,
+                )
+            )
+        return attached_hits
 
     def _search_frames(
         self,
@@ -229,9 +306,12 @@ class RetrievalService:
         ranked.sort(key=lambda item: item[0], reverse=True)
 
         hits: list[SearchHit] = []
+        episode_pks: dict[str, object] = {}
         for score, shot in ranked[: max(limit, settings.text_search_top_k)]:
             episode = db.get(Episode, shot.episode_pk)
             series = db.get(Series, episode.series_pk) if episode else None
+            if episode is not None:
+                episode_pks[episode.episode_id] = episode.id
             hits.append(
                 SearchHit(
                     series_id=series.series_id if series else "",
@@ -245,7 +325,8 @@ class RetrievalService:
             )
 
         merged_hits = self._merge_nearby_hits(hits)
-        return merged_hits[:limit]
+        limited_hits = merged_hits[:limit]
+        return self._attach_evidence_images_to_text_hits(db, limited_hits, episode_pks)
 
     @staticmethod
     def _build_response(hits: list[SearchHit]) -> SearchImageResponse:
