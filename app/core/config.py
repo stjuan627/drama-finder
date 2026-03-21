@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     asr_stream_chunk_seconds: int = defaults.ASR_STREAM_CHUNK_SECONDS
     asr_vad_merge_gap_ms: int = defaults.ASR_VAD_MERGE_GAP_MS
     asr_segment_max_seconds: int = defaults.ASR_SEGMENT_MAX_SECONDS
+    asr_enable_punctuation: bool = defaults.ASR_ENABLE_PUNCTUATION
     asr_node_project_dir: Path = Path(defaults.ASR_NODE_PROJECT_DIR)
     asr_node_cli_path: Path = Path(defaults.ASR_NODE_CLI_PATH)
     asr_node_model_dir: Path | None = (
@@ -55,6 +56,9 @@ class Settings(BaseSettings):
     )
     asr_node_vad_model_path: Path | None = (
         Path(defaults.ASR_NODE_VAD_MODEL_PATH) if defaults.ASR_NODE_VAD_MODEL_PATH else None
+    )
+    asr_node_punc_model_path: Path | None = (
+        Path(defaults.ASR_NODE_PUNC_MODEL_PATH) if defaults.ASR_NODE_PUNC_MODEL_PATH else None
     )
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD

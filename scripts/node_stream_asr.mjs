@@ -27,6 +27,10 @@ function getVadModelPath(vadModelPath) {
 	return vadModelPath || path.join(os.homedir(), '.coli', 'models', 'silero_vad.onnx');
 }
 
+function getPunctuationModelPath(punctuationModelPath) {
+	return punctuationModelPath;
+}
+
 function createSherpa(projectDir) {
 	const require = createRequire(path.join(projectDir, 'package.json'));
 	return require('sherpa-onnx-node');
@@ -65,6 +69,21 @@ function createVad(sherpaOnnx, vadModelPath) {
 		},
 		60,
 	);
+}
+
+function createPunctuation(sherpaOnnx, punctuationModelPath, numThreads) {
+	if (!punctuationModelPath) {
+		return null;
+	}
+
+	return new sherpaOnnx.OfflinePunctuation({
+		model: {
+			ctTransformer: punctuationModelPath,
+			numThreads,
+			provider: 'cpu',
+			debug: false,
+		},
+	});
 }
 
 function recognize(recognizer, samples) {
@@ -138,11 +157,13 @@ async function main() {
 
 	const modelDir = getModelPath(getArg('--model-dir'));
 	const vadModelPath = getVadModelPath(getArg('--vad-model'));
+	const punctuationModelPath = getPunctuationModelPath(getArg('--punc-model'));
 	const numThreads = Number.parseInt(getArg('--cores', '2'), 10) || 2;
 
 	const sherpaOnnx = createSherpa(projectDir);
 	const recognizer = createRecognizer(sherpaOnnx, modelDir, numThreads);
 	const vad = createVad(sherpaOnnx, vadModelPath);
+	const punctuation = createPunctuation(sherpaOnnx, punctuationModelPath, numThreads);
 	const windowSize = vad.config.sileroVad.windowSize;
 
 	const results = [];
@@ -153,16 +174,18 @@ async function main() {
 			const segment = vad.front(true);
 			vad.pop();
 			const result = recognize(recognizer, segment.samples);
-			const text = result.text.trim();
-			if (!text) {
+			const rawText = result.text.trim();
+			if (!rawText) {
 				continue;
 			}
+
+			const text = punctuation ? punctuation.addPunct(rawText).trim() : rawText;
 
 			const start = Number((segment.start / 16000).toFixed(3));
 			const end = Number(
 				((segment.start + segment.samples.length) / 16000).toFixed(3),
 			);
-			results.push({start, end, text});
+			results.push({start, end, text, raw_text: rawText});
 		}
 	}
 

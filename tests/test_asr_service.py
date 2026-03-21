@@ -49,6 +49,7 @@ def test_prepare_vad_model_dir_converts_vad_yaml_layout(tmp_path: Path) -> None:
 def test_transcribe_streams_audio_and_builds_timed_segments(monkeypatch) -> None:
     service = ASRService()
     monkeypatch.setattr(asr_module.settings, "asr_backend", "python")
+    monkeypatch.setattr(asr_module.settings, "asr_enable_punctuation", False)
 
     monkeypatch.setattr(service, "_load_model", lambda: object())
     monkeypatch.setattr(service, "_load_vad_model", lambda: object())
@@ -64,6 +65,7 @@ def test_transcribe_streams_audio_and_builds_timed_segments(monkeypatch) -> None
 def test_transcribe_uses_node_backend(monkeypatch, tmp_path: Path) -> None:
     service = ASRService()
     monkeypatch.setattr(asr_module.settings, "asr_backend", "node")
+    monkeypatch.setattr(asr_module.settings, "asr_enable_punctuation", False)
     monkeypatch.setattr(asr_module.settings, "asr_cpu_cores", 2)
     monkeypatch.setattr(asr_module.settings, "asr_node_project_dir", tmp_path / "coli")
     monkeypatch.setattr(
@@ -75,13 +77,17 @@ def test_transcribe_uses_node_backend(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(asr_module.settings, "asr_node_vad_model_path", None)
 
     completed = SimpleNamespace(stdout='[{"start":1.0,"end":2.5,"text":" 片段文本 "}]')
-    seen: dict[str, object] = {}
+    seen_command: list[str] = []
+    seen_check = False
+    seen_capture_output = False
+    seen_text = False
 
     def fake_run(command: list[str], check: bool, capture_output: bool, text: bool):
-        seen["command"] = command
-        seen["check"] = check
-        seen["capture_output"] = capture_output
-        seen["text"] = text
+        nonlocal seen_command, seen_check, seen_capture_output, seen_text
+        seen_command = command
+        seen_check = check
+        seen_capture_output = capture_output
+        seen_text = text
         return completed
 
     monkeypatch.setattr(asr_module.subprocess, "run", fake_run)
@@ -89,11 +95,68 @@ def test_transcribe_uses_node_backend(monkeypatch, tmp_path: Path) -> None:
     result = service.transcribe(Path("/tmp/fake.wav"))
 
     assert result == [{"start": 1.0, "end": 2.5, "text": "片段文本"}]
-    assert seen["check"] is True
-    assert seen["capture_output"] is True
-    assert seen["text"] is True
+    assert seen_check is True
+    assert seen_capture_output is True
+    assert seen_text is True
     expected_cli = str((Path.cwd() / "scripts/node_stream_asr.mjs").resolve())
-    assert seen["command"][:2] == ["node", expected_cli]
+    assert seen_command[:2] == ["node", expected_cli]
+
+
+def test_transcribe_uses_node_backend_with_punctuation(monkeypatch, tmp_path: Path) -> None:
+    service = ASRService()
+    monkeypatch.setattr(asr_module.settings, "asr_backend", "node")
+    monkeypatch.setattr(asr_module.settings, "asr_enable_punctuation", True)
+    monkeypatch.setattr(asr_module.settings, "asr_cpu_cores", 2)
+    monkeypatch.setattr(asr_module.settings, "asr_node_project_dir", tmp_path / "coli")
+    monkeypatch.setattr(
+        asr_module.settings,
+        "asr_node_cli_path",
+        Path("scripts/node_stream_asr.mjs"),
+    )
+    monkeypatch.setattr(asr_module.settings, "asr_node_model_dir", None)
+    monkeypatch.setattr(asr_module.settings, "asr_node_vad_model_path", None)
+    monkeypatch.setattr(
+        asr_module.settings,
+        "asr_node_punc_model_path",
+        tmp_path / "punc" / "model.int8.onnx",
+    )
+
+    completed = SimpleNamespace(
+        stdout='[{"start":1.0,"end":2.5,"text":"片段文本。","raw_text":"片段文本"}]'
+    )
+    seen_command: list[str] = []
+
+    def fake_run(command: list[str], check: bool, capture_output: bool, text: bool):
+        nonlocal seen_command
+        seen_command = command
+        return completed
+
+    monkeypatch.setattr(asr_module.subprocess, "run", fake_run)
+
+    result = service.transcribe(Path("/tmp/fake.wav"))
+
+    assert result == [{"start": 1.0, "end": 2.5, "text": "片段文本。", "raw_text": "片段文本"}]
+    assert "--punc-model" in seen_command
+
+
+def test_transcribe_requires_punctuation_model_path(monkeypatch, tmp_path: Path) -> None:
+    service = ASRService()
+    monkeypatch.setattr(asr_module.settings, "asr_backend", "node")
+    monkeypatch.setattr(asr_module.settings, "asr_enable_punctuation", True)
+    monkeypatch.setattr(asr_module.settings, "asr_cpu_cores", 2)
+    monkeypatch.setattr(asr_module.settings, "asr_node_project_dir", tmp_path / "coli")
+    monkeypatch.setattr(
+        asr_module.settings, "asr_node_cli_path", Path("scripts/node_stream_asr.mjs")
+    )
+    monkeypatch.setattr(asr_module.settings, "asr_node_model_dir", None)
+    monkeypatch.setattr(asr_module.settings, "asr_node_vad_model_path", None)
+    monkeypatch.setattr(asr_module.settings, "asr_node_punc_model_path", None)
+
+    try:
+        service.transcribe(Path("/tmp/fake.wav"))
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "asr_node_punc_model_path" in str(exc)
 
 
 def test_consume_stream_segment_merges_close_ranges() -> None:

@@ -46,9 +46,14 @@ class ASRService:
         if settings.asr_node_model_dir is not None:
             command.extend(["--model-dir", str(settings.asr_node_model_dir.expanduser())])
         if settings.asr_node_vad_model_path is not None:
-            command.extend(
-                ["--vad-model", str(settings.asr_node_vad_model_path.expanduser())]
-            )
+            command.extend(["--vad-model", str(settings.asr_node_vad_model_path.expanduser())])
+        if settings.asr_enable_punctuation:
+            punc_model_path = settings.asr_node_punc_model_path
+            if punc_model_path is None:
+                raise RuntimeError(
+                    "ASR punctuation is enabled but asr_node_punc_model_path is not configured"
+                )
+            command.extend(["--punc-model", str(punc_model_path.expanduser())])
 
         completed = subprocess.run(
             command,
@@ -60,14 +65,21 @@ class ASRService:
         if not isinstance(payload, list):
             raise RuntimeError("node ASR CLI did not return a list payload")
         return [
-            {
-                "start": round(float(item["start"]), 3),
-                "end": round(float(item["end"]), 3),
-                "text": self._clean_text(str(item["text"])),
-            }
+            self._normalize_node_segment(item)
             for item in payload
             if isinstance(item, dict) and str(item.get("text", "")).strip()
         ]
+
+    def _normalize_node_segment(self, item: dict[str, Any]) -> dict[str, Any]:
+        segment = {
+            "start": round(float(item["start"]), 3),
+            "end": round(float(item["end"]), 3),
+            "text": self._clean_text(str(item["text"])),
+        }
+        raw_text = item.get("raw_text")
+        if raw_text is not None:
+            segment["raw_text"] = self._clean_text(str(raw_text))
+        return segment
 
     @staticmethod
     def _resolve_node_cli_path() -> Path:
@@ -299,9 +311,8 @@ class ASRService:
     ) -> bool:
         gap_ms = current_segment[0] - previous_segment[1]
         merged_duration_ms = current_segment[1] - previous_segment[0]
-        return (
-            gap_ms <= settings.asr_vad_merge_gap_ms
-            and merged_duration_ms <= int(settings.asr_segment_max_seconds * 1000)
+        return gap_ms <= settings.asr_vad_merge_gap_ms and merged_duration_ms <= int(
+            settings.asr_segment_max_seconds * 1000
         )
 
     def _transcribe_segment_range(
@@ -430,10 +441,7 @@ class ASRService:
                 continue
 
             previous = merged[-1]
-            can_merge = (
-                start_ms - previous[1] <= gap_ms
-                and end_ms - previous[0] <= max_segment_ms
-            )
+            can_merge = start_ms - previous[1] <= gap_ms and end_ms - previous[0] <= max_segment_ms
             if can_merge:
                 previous[1] = max(previous[1], end_ms)
             else:
