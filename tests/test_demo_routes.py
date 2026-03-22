@@ -50,8 +50,9 @@ def test_demo_alias_keeps_working() -> None:
     response = client.get("/demo")
 
     assert response.status_code == 200
-    assert "默认进入检索" in response.text
-    assert "常规搜索框" in response.text
+    assert "旧版内联 Demo 已退场" in response.text
+    assert "React 驱动" in response.text
+    assert "/ui/search" in response.text
 
 
 def test_demo_evidence_rejects_outside_data_root() -> None:

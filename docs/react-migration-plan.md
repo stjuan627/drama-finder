@@ -29,8 +29,57 @@
   - `GET /demo`
 - 切流后：
   - `GET /`、`GET /search`、`GET /ingest` 指向 React 页面
-  - `GET /demo` 保留为回退入口
+  - `GET /demo` 保留为轻量回退与路由检查页，不再承载旧版完整 demo 功能
   - `GET /demo/evidence` 继续由后端负责，禁止前端直连本地文件路径
+
+## 当前实现状态
+
+- React 已接管默认入口：`/`、`/search`、`/ingest`
+- `GET /ui/search` 与 `GET /ui/ingest` 仍可单独访问，适合联调与 smoke test
+- `GET /demo` 现在是轻量说明页与跳转页，不再保留原来那套 1000 行内联 HTML/CSS/JS，也不再提供旧版完整页面交互
+- `GET /demo/evidence` 保持不变，继续为 React 结果页提供证据图代理
+
+## 启动方式
+
+### 构建后通过 FastAPI 访问
+
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+make start
+```
+
+访问：
+
+- `http://127.0.0.1:8000/search`
+- `http://127.0.0.1:8000/ingest`
+
+如果未先生成 `frontend/dist/`，那么 `8000` 下只会返回 React shell 提示页；这是正常行为，需要先执行 `npm run build`。
+
+### 开发模式
+
+先启动 API：
+
+```bash
+make start
+```
+
+再启动 Vite：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+访问：
+
+- `http://127.0.0.1:5173/ui/search`
+- `http://127.0.0.1:5173/ui/ingest`
+
+如果要验证真实入库任务推进，还需要额外启动 `make worker`。
 
 ## React 页面范围
 
@@ -89,6 +138,7 @@
 - 删除 `demo.py` 中不再使用的内联 HTML/CSS/JS
 - 保留 `demo/evidence` 文件代理逻辑
 - 更新测试到新的页面与契约基线
+- 当前已完成
 
 ## 验收标准
 
