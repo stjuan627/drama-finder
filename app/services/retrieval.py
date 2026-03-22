@@ -16,6 +16,7 @@ from app.schemas.search import SearchHit, SearchImageResponse
 from app.services.gemini import GeminiConfigurationError, GeminiEmbeddingService
 
 settings = get_settings()
+EpisodeLookupKey = tuple[str, str]
 
 
 class RetrievalService:
@@ -217,12 +218,12 @@ class RetrievalService:
         self,
         db: Session,
         hits: list[SearchHit],
-        episode_pks: dict[str, object],
+        episode_pks: dict[EpisodeLookupKey, object],
         max_images: int = 5,
     ) -> list[SearchHit]:
         attached_hits: list[SearchHit] = []
         for hit in hits:
-            episode_pk = episode_pks.get(hit.episode_id)
+            episode_pk = episode_pks.get((hit.series_id, hit.episode_id))
             evidence_images: list[str] = []
             if episode_pk is not None:
                 frames = self._load_frames_for_text_hit(
@@ -335,17 +336,19 @@ class RetrievalService:
         ranked.sort(key=lambda item: item[0], reverse=True)
 
         hits: list[SearchHit] = []
-        episode_pks: dict[str, object] = {}
+        episode_pks: dict[EpisodeLookupKey, object] = {}
         for score, frame in ranked[: max(limit, settings.text_search_top_k)]:
             episode = db.get(Episode, frame.episode_pk)
             series = db.get(Series, episode.series_pk) if episode else None
+            series_id = series.series_id if series else ""
+            episode_id = episode.episode_id if episode else ""
             if episode is not None:
-                episode_pks[episode.episode_id] = episode.id
+                episode_pks[(series_id, episode_id)] = episode.id
             start_ts, end_ts = self._frame_interval(frame)
             hits.append(
                 SearchHit(
-                    series_id=series.series_id if series else "",
-                    episode_id=episode.episode_id if episode else "",
+                    series_id=series_id,
+                    episode_id=episode_id,
                     matched_start_ts=start_ts,
                     matched_end_ts=end_ts,
                     score=score,

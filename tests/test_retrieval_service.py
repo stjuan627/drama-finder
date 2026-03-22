@@ -45,11 +45,17 @@ class FakeSession:
         return FakeResult(self._frame_rows)
 
     def scalars(self, statement: object) -> FakeScalarResult:
-        entity = None
         column_descriptions = getattr(statement, "column_descriptions", None)
-        if column_descriptions:
-            entity = column_descriptions[0].get("entity")
-        del entity
+        entity = column_descriptions[0].get("entity") if column_descriptions else None
+        if entity is Frame:
+            frames = self._frames
+            for criterion in getattr(statement, "_where_criteria", ()):
+                left = getattr(criterion, "left", None)
+                right = getattr(criterion, "right", None)
+                if getattr(left, "key", None) == "episode_pk":
+                    episode_pk = getattr(right, "value", None)
+                    frames = [frame for frame in frames if frame.episode_pk == episode_pk]
+            return FakeScalarResult(frames)
         return FakeScalarResult(self._frames)
 
     def get(self, model: type[object], key: object) -> object | None:
@@ -315,6 +321,87 @@ def test_search_text_merged_hits_collect_images_from_merged_interval() -> None:
         "/tmp/frame_merged_1.jpg",
         "/tmp/frame_merged_2.jpg",
     ]
+
+
+def test_search_text_keeps_evidence_images_scoped_to_series_when_episode_ids_repeat() -> None:
+    series_a = Series(
+        id=uuid4(),
+        series_id="series-a",
+        title="A剧",
+        season_label="S1",
+        language="zh-CN",
+        manifest_path="/tmp/a.yaml",
+    )
+    episode_a = Episode(
+        id=uuid4(),
+        series_pk=series_a.id,
+        episode_id="ep01",
+        episode_no=1,
+        title="第一集",
+        filename="a-ep01.mp4",
+        video_path="/tmp/a-ep01.mp4",
+    )
+    series_b = Series(
+        id=uuid4(),
+        series_id="series-b",
+        title="B剧",
+        season_label="S1",
+        language="zh-CN",
+        manifest_path="/tmp/b.yaml",
+    )
+    episode_b = Episode(
+        id=uuid4(),
+        series_pk=series_b.id,
+        episode_id="ep01",
+        episode_no=1,
+        title="第一集",
+        filename="b-ep01.mp4",
+        video_path="/tmp/b-ep01.mp4",
+    )
+    frames = [
+        Frame(
+            id=uuid4(),
+            episode_pk=episode_a.id,
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=12.0,
+            image_path="/tmp/a-frame.jpg",
+            context_asr_text="皇上驾到",
+            raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
+            embedding=None,
+        ),
+        Frame(
+            id=uuid4(),
+            episode_pk=episode_b.id,
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=12.0,
+            image_path="/tmp/b-frame.jpg",
+            context_asr_text="皇上驾到",
+            raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
+            embedding=None,
+        ),
+    ]
+    db = FakeSession(
+        frames=frames,
+        objects={
+            (Episode, episode_a.id): episode_a,
+            (Series, series_a.id): series_a,
+            (Episode, episode_b.id): episode_b,
+            (Series, series_b.id): series_b,
+        },
+    )
+
+    response = RetrievalService().search_text(cast(Session, db), "皇上驾到", limit=2)
+
+    assert len(response.hits) == 2
+    evidence_images_by_series = {hit.series_id: hit.evidence_images for hit in response.hits}
+    assert evidence_images_by_series == {
+        "series-a": ["/tmp/a-frame.jpg"],
+        "series-b": ["/tmp/b-frame.jpg"],
+    }
 
 
 def test_search_image_returns_low_confidence_when_gemini_is_unavailable() -> None:
