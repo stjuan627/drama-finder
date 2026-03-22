@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Hero } from '../components/Hero';
 import { api } from '../api/api';
 import { SearchResponse } from '../types/api';
+import { ImagePreview } from '../components/ImagePreview';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '检索失败，请稍后再试。';
@@ -16,7 +17,9 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewState, setPreviewState] = useState<{ images: string[]; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const secondsToLabel = (value: number) => {
     const total = Math.max(0, Math.floor(value || 0));
@@ -61,6 +64,20 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openPreview = (
+    images: string[],
+    index: number,
+    trigger: HTMLButtonElement | null,
+  ) => {
+    previewTriggerRef.current = trigger;
+    setPreviewState({ images, index });
+  };
+
+  const closePreview = () => {
+    setPreviewState(null);
+    previewTriggerRef.current?.focus();
   };
 
   return (
@@ -168,7 +185,10 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
               </div>
             )}
             {results?.hits.map((hit) => (
-              <article key={`${hit.series_id}-${hit.episode_id}-${hit.matched_start_ts}`} className="hit">
+              <article
+                key={`${hit.series_id}-${hit.episode_id}-${hit.matched_start_ts}`}
+                className="hit"
+              >
                 <div className="hit-head flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                   <div className="hit-title text-lg font-bold flex items-center flex-wrap gap-2">
                     <span>{hit.series_id} / {hit.episode_id}</span>
@@ -188,18 +208,34 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
                 <div className="hit-images-container mt-1">
                   {hit.evidence_images.length > 0 ? (
                     <div className="hit-images-list flex gap-3 overflow-x-auto py-1 pb-2">
-                      {hit.evidence_images.map((path) => (
-                        <div key={path} className="hit-image-item flex-none w-[200px] aspect-video rounded-xl overflow-hidden border border-line bg-white shadow-sm">
-                          <img
-                            src={api.getEvidenceUrl(path)}
-                            alt="证据截图"
-                            className="w-full h-full object-cover block"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                      {hit.evidence_images.map((path, index) => {
+                        const imageUrl = api.getEvidenceUrl(path);
+                        const allUrls = hit.evidence_images.map((imagePath) => api.getEvidenceUrl(imagePath));
+                        return (
+                          <button
+                            key={path}
+                            type="button"
+                            className="hit-image-item flex-none w-[200px] aspect-video rounded-xl overflow-hidden border border-line bg-white shadow-sm cursor-zoom-in hover:ring-2 hover:ring-accent/30 transition-all text-left"
+                            style={{
+                              contentVisibility: 'auto',
+                              containIntrinsicSize: '200px 112px',
                             }}
-                          />
-                        </div>
-                      ))}
+                            onClick={(event) => openPreview(allUrls, index, event.currentTarget)}
+                            aria-label={`查看大图（第 ${index + 1} 张，共 ${allUrls.length} 张）`}
+                          >
+                            <img
+                              src={imageUrl}
+                              alt="证据截图"
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-cover block"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                              }}
+                            />
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="hit-images-empty text-[13px] text-muted p-3 bg-white/30 rounded-xl border border-dashed border-line flex items-center gap-2">
@@ -212,6 +248,15 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
           </div>
         </section>
       </section>
+
+      <ImagePreview 
+        images={previewState?.images ?? null}
+        currentIndex={previewState?.index ?? 0}
+        onNavigate={(index) => {
+          setPreviewState((current) => (current ? { ...current, index } : current));
+        }}
+        onClose={closePreview}
+      />
     </>
   );
 };
