@@ -123,6 +123,8 @@ def test_search_text_returns_interval_hit() -> None:
 
     assert response.low_confidence is False
     assert len(response.hits) == 1
+    assert response.hits[0].series_label == "测试剧 S1"
+    assert response.hits[0].episode_label == "第1集 · 第一集"
     assert response.hits[0].matched_start_ts == 12.0
     assert response.hits[0].matched_end_ts == 18.0
     assert response.hits[0].evidence_images == [
@@ -517,3 +519,30 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
     assert response.low_confidence is False
     assert [hit.matched_start_ts for hit in response.hits] == [3.0, 9.0]
     assert all(hit.matched_start_ts != 0.0 for hit in response.hits)
+
+
+def test_search_text_falls_back_to_stable_identifiers_when_relations_are_missing() -> None:
+    orphan_episode_pk = uuid4()
+    frames = [
+        Frame(
+            id=uuid4(),
+            episode_pk=orphan_episode_pk,
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=12.0,
+            image_path="/tmp/frame_orphan.jpg",
+            context_asr_text="皇上驾到",
+            raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
+            embedding=None,
+        )
+    ]
+    db = FakeSession(frames=frames, objects={})
+
+    response = RetrievalService().search_text(cast(Session, db), "皇上驾到", limit=1)
+
+    assert len(response.hits) == 1
+    assert response.hits[0].series_id == "未知剧集"
+    assert response.hits[0].series_label == "未知剧集"
+    assert response.hits[0].episode_id == str(orphan_episode_pk)
+    assert response.hits[0].episode_label == str(orphan_episode_pk)

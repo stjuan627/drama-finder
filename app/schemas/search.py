@@ -11,6 +11,8 @@ class SearchTextRequest(BaseModel):
 class SearchHit(BaseModel):
     series_id: str
     episode_id: str
+    series_label: str
+    episode_label: str
     matched_start_ts: float
     matched_end_ts: float
     score: float

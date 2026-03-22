@@ -14,6 +14,8 @@ export type JobStage =
 export interface SearchHit {
   series_id: string;
   episode_id: string;
+  series_label: string;
+  episode_label: string;
   matched_start_ts: number;
   matched_end_ts: number;
   score: number;

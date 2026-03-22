@@ -32,6 +32,38 @@ class RetrievalService:
         except ValueError:
             return raw_path
 
+    @staticmethod
+    def _series_label(series: Series | None, series_id: str) -> str:
+        if series is None:
+            return series_id or "未知剧集"
+
+        title = series.title.strip()
+        season_label = (series.season_label or "").strip()
+        if title and season_label and season_label not in title:
+            return f"{title} {season_label}"
+        if title:
+            return title
+        if season_label:
+            return f"{series_id} {season_label}".strip()
+        return series_id
+
+    @staticmethod
+    def _episode_label(episode: Episode | None, fallback_id: str) -> str:
+        if episode is None:
+            return fallback_id or "未知剧集"
+
+        parts: list[str] = []
+        if episode.episode_no:
+            parts.append(f"第{episode.episode_no}集")
+
+        title = episode.title.strip()
+        if title and title not in parts:
+            parts.append(title)
+
+        if parts:
+            return " · ".join(parts)
+        return fallback_id or episode.episode_id
+
     def search_image(self, db: Session, image_path: Path, limit: int = 3) -> SearchImageResponse:
         try:
             query_embedding = self.embedding_service.embed_image(image_path)
@@ -160,6 +192,8 @@ class RetrievalService:
                 merged[-1] = SearchHit(
                     series_id=previous.series_id,
                     episode_id=previous.episode_id,
+                    series_label=previous.series_label,
+                    episode_label=previous.episode_label,
                     matched_start_ts=min(previous.matched_start_ts, hit.matched_start_ts),
                     matched_end_ts=max(previous.matched_end_ts, hit.matched_end_ts),
                     score=max(previous.score, hit.score),
@@ -246,6 +280,8 @@ class RetrievalService:
                 SearchHit(
                     series_id=hit.series_id,
                     episode_id=hit.episode_id,
+                    series_label=hit.series_label,
+                    episode_label=hit.episode_label,
                     matched_start_ts=hit.matched_start_ts,
                     matched_end_ts=hit.matched_end_ts,
                     score=hit.score,
@@ -279,9 +315,11 @@ class RetrievalService:
             series = db.get(Series, episode.series_pk) if episode else None
             interval = float(frame.raw_metadata.get("sample_interval_seconds", 3.0))
             key = (
-                series.series_id if series else "",
-                episode.episode_id if episode else "",
+                series.series_id if series else (str(episode.series_pk) if episode else "未知剧集"),
+                episode.episode_id if episode else str(frame.episode_pk),
             )
+            series_label = self._series_label(series, key[0])
+            episode_label = self._episode_label(episode, key[1])
             start_ts = frame.frame_ts
             end_ts = frame.frame_ts + interval
             existing_ranges = selected_ranges.get(key, [])
@@ -300,6 +338,8 @@ class RetrievalService:
                 SearchHit(
                     series_id=key[0],
                     episode_id=key[1],
+                    series_label=series_label,
+                    episode_label=episode_label,
                     matched_start_ts=start_ts,
                     matched_end_ts=end_ts,
                     score=score,
@@ -349,8 +389,12 @@ class RetrievalService:
         for score, frame in ranked[: max(limit, settings.text_search_top_k)]:
             episode = db.get(Episode, frame.episode_pk)
             series = db.get(Series, episode.series_pk) if episode else None
-            series_id = series.series_id if series else ""
-            episode_id = episode.episode_id if episode else ""
+            series_id = (
+                series.series_id if series else (str(episode.series_pk) if episode else "未知剧集")
+            )
+            episode_id = episode.episode_id if episode else str(frame.episode_pk)
+            series_label = self._series_label(series, series_id)
+            episode_label = self._episode_label(episode, episode_id)
             if episode is not None:
                 episode_pks[(series_id, episode_id)] = episode.id
             start_ts, end_ts = self._frame_interval(frame)
@@ -358,6 +402,8 @@ class RetrievalService:
                 SearchHit(
                     series_id=series_id,
                     episode_id=episode_id,
+                    series_label=series_label,
+                    episode_label=episode_label,
                     matched_start_ts=start_ts,
                     matched_end_ts=end_ts,
                     score=score,

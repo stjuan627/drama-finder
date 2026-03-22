@@ -36,6 +36,8 @@ def test_evaluate_sample_marks_top1_and_topk_hits() -> None:
         SearchHit(
             series_id="series-1",
             episode_id="ep01",
+            series_label="测试剧 S1",
+            episode_label="第1集 · 第一集",
             matched_start_ts=10.0,
             matched_end_ts=20.0,
             score=0.9,
@@ -45,6 +47,8 @@ def test_evaluate_sample_marks_top1_and_topk_hits() -> None:
         SearchHit(
             series_id="series-1",
             episode_id="ep01",
+            series_label="测试剧 S1",
+            episode_label="第1集 · 第一集",
             matched_start_ts=30.0,
             matched_end_ts=40.0,
             score=0.7,

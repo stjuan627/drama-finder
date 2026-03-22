@@ -94,6 +94,10 @@ export const SearchPage: React.FC = () => {
     return `${hh}:${mm}:${ss}`;
   };
 
+  const displaySeriesLabel = (seriesLabel: string, seriesId: string) => seriesLabel || seriesId || '未知剧集';
+
+  const displayEpisodeLabel = (episodeLabel: string, episodeId: string) => episodeLabel || episodeId || '未知剧集';
+
   const handleTextSearch = async () => {
     if (!queryText.trim()) {
       setError('请输入台词文本。');
@@ -304,7 +308,9 @@ export const SearchPage: React.FC = () => {
               >
                 <div className="hit-head flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                   <div className="hit-title text-lg font-bold flex items-center flex-wrap gap-2">
-                    <span>{hit.series_id} / {hit.episode_id}</span>
+                    <span>
+                      {displaySeriesLabel(hit.series_label, hit.series_id)} / {displayEpisodeLabel(hit.episode_label, hit.episode_id)}
+                    </span>
                     <span className="hit-time-range font-mono text-accent bg-accent-soft/20 px-2.5 py-0.5 rounded-lg text-sm font-semibold">
                       {secondsToLabel(hit.matched_start_ts)} - {secondsToLabel(hit.matched_end_ts)}
                     </span>
