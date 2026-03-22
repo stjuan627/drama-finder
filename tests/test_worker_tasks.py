@@ -41,11 +41,18 @@ def test_run_frame_embedding_job_marks_completed(monkeypatch) -> None:
 
     class FakePipeline:
         def backfill_frame_embeddings(
-            self, passed_db: object, episode_pk: object
+            self,
+            passed_db: object,
+            episode_pk: object,
+            progress_callback=None,
         ) -> dict[str, int]:
             assert passed_db is db
             assert episode_pk == job.episode_pk
-            return {"pending": 2, "updated": 2, "failed": 0}
+            if progress_callback is not None:
+                progress_callback(
+                    {"pending": 2, "processed": 2, "updated": 2, "failed": 0, "remaining": 0}
+                )
+            return {"pending": 2, "processed": 2, "updated": 2, "failed": 0, "remaining": 0}
 
     monkeypatch.setattr(worker_tasks, "SessionLocal", fake_session_local)
     monkeypatch.setattr(worker_tasks, "IngestPipeline", FakePipeline)
@@ -53,7 +60,20 @@ def test_run_frame_embedding_job_marks_completed(monkeypatch) -> None:
     worker_tasks.run_frame_embedding_job(str(job.id))
 
     assert job.artifacts["embedding_status"] == "completed"
-    assert job.artifacts["embedding_backfill"] == {"pending": 2, "updated": 2, "failed": 0}
+    assert job.artifacts["embedding_backfill"] == {
+        "pending": 2,
+        "processed": 2,
+        "updated": 2,
+        "failed": 0,
+        "remaining": 0,
+    }
+    assert job.artifacts["embedding_progress"] == {
+        "pending": 2,
+        "processed": 2,
+        "updated": 2,
+        "failed": 0,
+        "remaining": 0,
+    }
     assert job.artifacts["embedding_error"] is None
     assert datetime.fromisoformat(job.artifacts["embedding_started_at"]).tzinfo == UTC
     assert datetime.fromisoformat(job.artifacts["embedding_finished_at"]).tzinfo == UTC
@@ -73,7 +93,10 @@ def test_run_frame_embedding_job_marks_failed(monkeypatch) -> None:
 
     class FakePipeline:
         def backfill_frame_embeddings(
-            self, passed_db: object, episode_pk: object
+            self,
+            passed_db: object,
+            episode_pk: object,
+            progress_callback=None,
         ) -> dict[str, int]:
             assert passed_db is db
             assert episode_pk == job.episode_pk
@@ -92,3 +115,40 @@ def test_run_frame_embedding_job_marks_failed(monkeypatch) -> None:
     assert job.artifacts["embedding_status"] == "failed"
     assert job.artifacts["embedding_error"] == "boom"
     assert datetime.fromisoformat(job.artifacts["embedding_finished_at"]).tzinfo == UTC
+
+
+def test_run_frame_embedding_job_initializes_progress(monkeypatch) -> None:
+    job = SimpleNamespace(
+        id=uuid4(),
+        episode_pk=uuid4(),
+        artifacts={"embedding_status": "queued", "pending_frame_embeddings": 5},
+    )
+    db = FakeDB(job)
+
+    @contextmanager
+    def fake_session_local():
+        yield db
+
+    class FakePipeline:
+        def backfill_frame_embeddings(
+            self, passed_db: object, episode_pk: object, progress_callback
+        ) -> dict[str, int]:
+            assert passed_db is db
+            assert episode_pk == job.episode_pk
+            progress_callback(
+                {"pending": 5, "processed": 2, "updated": 2, "failed": 0, "remaining": 3}
+            )
+            return {"pending": 5, "processed": 5, "updated": 5, "failed": 0, "remaining": 0}
+
+    monkeypatch.setattr(worker_tasks, "SessionLocal", fake_session_local)
+    monkeypatch.setattr(worker_tasks, "IngestPipeline", FakePipeline)
+
+    worker_tasks.run_frame_embedding_job(str(job.id))
+
+    assert job.artifacts["embedding_progress"] == {
+        "pending": 5,
+        "processed": 5,
+        "updated": 5,
+        "failed": 0,
+        "remaining": 0,
+    }

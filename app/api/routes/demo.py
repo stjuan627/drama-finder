@@ -666,7 +666,9 @@ INGEST_BODY = """
             <div class="pill">状态：<span id="jobStatus" class="muted">-</span></div>
             <div class="pill">阶段：<span id="jobStage" class="muted">-</span></div>
             <div class="pill">进度：<span id="jobProgress" class="muted">-</span></div>
+            <div class="pill">图片向量：<span id="embeddingStatus" class="muted">-</span></div>
           </div>
+          <div id="embeddingProgress" class="muted">图片向量进度会在 worker 处理中持续刷新。</div>
           <div id="jobMessage" class="muted">提交任务后，这里会显示实时状态。</div>
           <div class="json-box" id="jobPayload">{}</div>
         </section>
@@ -835,6 +837,8 @@ INGEST_SCRIPT = """
       jobStatus: document.getElementById("jobStatus"),
       jobStage: document.getElementById("jobStage"),
       jobProgress: document.getElementById("jobProgress"),
+      embeddingStatus: document.getElementById("embeddingStatus"),
+      embeddingProgress: document.getElementById("embeddingProgress"),
       jobMessage: document.getElementById("jobMessage"),
       jobPayload: document.getElementById("jobPayload"),
     };
@@ -864,6 +868,15 @@ INGEST_SCRIPT = """
       el.jobStage.textContent = payload.current_stage || "-";
       el.jobProgress.textContent = `${payload.progress_current ?? 0} / ${payload.progress_total ?? 0}`;
       const embeddingStatus = payload.artifacts?.embedding_status;
+      const embeddingProgress = payload.artifacts?.embedding_progress || {};
+      const embeddingPending = embeddingProgress.pending ?? payload.artifacts?.pending_frame_embeddings ?? 0;
+      const embeddingProcessed = embeddingProgress.processed ?? 0;
+      const embeddingUpdated = embeddingProgress.updated ?? 0;
+      const embeddingFailed = embeddingProgress.failed ?? 0;
+      const embeddingRemaining = embeddingProgress.remaining ?? Math.max(embeddingPending - embeddingProcessed, 0);
+      el.embeddingStatus.textContent = embeddingStatus || "-";
+      el.embeddingProgress.textContent =
+        `processed ${embeddingProcessed} / ${embeddingPending} · updated ${embeddingUpdated} · failed ${embeddingFailed} · remaining ${embeddingRemaining}`;
       const messageClass =
         payload.status === "completed" ? "ok" : payload.status === "failed" ? "bad" : "";
       let detail = payload.error_message ? `错误：${payload.error_message}` : "任务记录已更新。";

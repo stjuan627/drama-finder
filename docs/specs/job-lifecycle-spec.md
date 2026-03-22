@@ -32,6 +32,7 @@
 
 ## Embedding 后处理
 - `ingest_jobs.artifacts.embedding_status` 负责记录向量化子状态。
+- `ingest_jobs.artifacts.embedding_progress` 负责记录子进度，至少包含 `pending / processed / updated / failed / remaining`。
 - 推荐状态：`deferred -> queued -> running -> completed|failed`。
 - 文本检索不依赖该状态；图片检索仅在 `Frame.embedding` 已回填时可命中。
 

@@ -34,6 +34,7 @@ def test_ingest_page_is_separate() -> None:
     assert response.status_code == 200
     assert "入库任务" in response.text
     assert "任务状态" in response.text
+    assert "图片向量" in response.text
     assert "常规搜索框" not in response.text
 
 

@@ -6,6 +6,15 @@ from uuid import UUID
 from app.db.session import SessionLocal
 from app.models.ingest_job import IngestJob
 from app.services.ingest import IngestPipeline
+from sqlalchemy.orm import Session
+
+
+def _update_embedding_progress(job: IngestJob, db: Session, progress: dict[str, int]) -> None:
+    artifacts = dict(job.artifacts or {})
+    artifacts["embedding_progress"] = progress
+    job.artifacts = artifacts
+    db.add(job)
+    db.commit()
 
 
 def run_ingest_job(job_id: str) -> None:
@@ -24,12 +33,23 @@ def run_frame_embedding_job(job_id: str) -> None:
         artifacts = dict(job.artifacts or {})
         artifacts["embedding_status"] = "running"
         artifacts["embedding_started_at"] = datetime.now(UTC).isoformat()
+        artifacts["embedding_progress"] = {
+            "pending": int(artifacts.get("pending_frame_embeddings", 0) or 0),
+            "processed": 0,
+            "updated": 0,
+            "failed": 0,
+            "remaining": int(artifacts.get("pending_frame_embeddings", 0) or 0),
+        }
         db.add(job)
         job.artifacts = artifacts
         db.commit()
 
         try:
-            result = pipeline.backfill_frame_embeddings(db, job.episode_pk)
+            result = pipeline.backfill_frame_embeddings(
+                db,
+                job.episode_pk,
+                progress_callback=lambda progress: _update_embedding_progress(job, db, progress),
+            )
         except Exception as exc:
             db.refresh(job)
             artifacts = dict(job.artifacts or {})
@@ -47,6 +67,7 @@ def run_frame_embedding_job(job_id: str) -> None:
         artifacts["embedding_error"] = None
         artifacts["embedding_finished_at"] = datetime.now(UTC).isoformat()
         artifacts["embedding_backfill"] = result
+        artifacts["embedding_progress"] = result
         job.artifacts = artifacts
         db.add(job)
         db.commit()

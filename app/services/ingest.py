@@ -5,6 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -275,6 +276,7 @@ class IngestPipeline:
         limit: int | None = None,
         commit_every: int = 20,
         max_workers: int = 1,
+        progress_callback: Callable[[dict[str, int]], None] | None = None,
     ) -> dict[str, int]:
         target_episode_pk = UUID(str(episode_pk))
         rows = db.scalars(
@@ -287,10 +289,21 @@ class IngestPipeline:
             pending_frames = pending_frames[: max(0, limit)]
 
         if not pending_frames:
-            return {
+            result = {
                 "pending": 0,
+                "processed": 0,
                 "updated": 0,
                 "failed": 0,
+                "remaining": 0,
+            }
+            if progress_callback is not None:
+                progress_callback(result)
+            return {
+                "pending": 0,
+                "processed": 0,
+                "updated": 0,
+                "failed": 0,
+                "remaining": 0,
             }
 
         worker_count = max(1, max_workers)
@@ -335,25 +348,51 @@ class IngestPipeline:
 
                 if commit_every > 0 and index % commit_every == 0:
                     db.commit()
+                    progress = {
+                        "pending": len(pending_frames),
+                        "processed": index,
+                        "updated": updated,
+                        "failed": failed,
+                        "remaining": len(pending_frames) - index,
+                    }
                     logger.info(
                         (
                             "frame embedding backfill progress: "
-                            "episode_pk=%s processed=%s/%s updated=%s failed=%s workers=%s"
+                            "episode_pk=%s processed=%s/%s updated=%s failed=%s remaining=%s workers=%s"
                         ),
                         target_episode_pk,
-                        index,
-                        len(pending_frames),
-                        updated,
-                        failed,
+                        progress["processed"],
+                        progress["pending"],
+                        progress["updated"],
+                        progress["failed"],
+                        progress["remaining"],
                         worker_count,
                     )
+                    if progress_callback is not None:
+                        progress_callback(progress)
 
         db.commit()
-        return {
+        result = {
             "pending": len(pending_frames),
+            "processed": len(pending_frames),
             "updated": updated,
             "failed": failed,
+            "remaining": 0,
         }
+        if progress_callback is not None:
+            progress_callback(result)
+        logger.info(
+            (
+                "frame embedding backfill completed: "
+                "episode_pk=%s processed=%s updated=%s failed=%s workers=%s"
+            ),
+            target_episode_pk,
+            result["processed"],
+            result["updated"],
+            result["failed"],
+            worker_count,
+        )
+        return result
 
     def _embed_frame_payload(self, image_path: Path, context_text: str) -> list[float]:
         return self.embedding_service.embed_frame_document(

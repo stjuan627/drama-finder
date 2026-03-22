@@ -45,6 +45,9 @@ make start
 make worker
 ```
 
+- `make worker` 当前会同时消费 `ingest` 和 `embedding` 两个队列。
+- 入库页 `/ingest` 会展示 `embedding_status` 与图片向量子进度；worker 终端也会输出 embedding backfill 的进度日志。
+
 ## ASR 标点恢复
 
 当前默认 ASR 主链为 `Node.js + sherpa-onnx + SenseVoice Small`，可选开启 `ct-punc-c` 风格的离线标点恢复，改善中文台词黏连和断句可读性。
