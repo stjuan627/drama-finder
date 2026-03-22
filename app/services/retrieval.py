@@ -14,6 +14,7 @@ from app.models.frame import Frame
 from app.models.series import Series
 from app.schemas.search import SearchHit, SearchImageResponse
 from app.services.gemini import GeminiConfigurationError, GeminiEmbeddingService
+from app.services.storage import StorageService
 
 settings = get_settings()
 EpisodeLookupKey = tuple[str, str]
@@ -22,6 +23,14 @@ EpisodeLookupKey = tuple[str, str]
 class RetrievalService:
     def __init__(self) -> None:
         self.embedding_service = GeminiEmbeddingService()
+        self.storage_service = StorageService()
+
+    def _normalize_evidence_image_path(self, raw_path: str) -> str:
+        resolved = self.storage_service.resolve_data_path(raw_path)
+        try:
+            return self.storage_service.to_data_relative_path(resolved)
+        except ValueError:
+            return raw_path
 
     def search_image(self, db: Session, image_path: Path, limit: int = 3) -> SearchImageResponse:
         try:
@@ -177,8 +186,7 @@ class RetrievalService:
         frame_start_ts, frame_end_ts = cls._frame_interval(frame)
         return frame_start_ts < end_ts and frame_end_ts > start_ts
 
-    @staticmethod
-    def _select_evidence_images(frames: list[Frame], max_images: int = 5) -> list[str]:
+    def _select_evidence_images(self, frames: list[Frame], max_images: int = 5) -> list[str]:
         selected: list[str] = []
         seen_paths: set[str] = set()
         ordered_frames = sorted(
@@ -188,10 +196,11 @@ class RetrievalService:
         for frame in ordered_frames:
             if frame.raw_metadata.get("index_excluded") is True:
                 continue
-            if frame.image_path in seen_paths:
+            normalized_path = self._normalize_evidence_image_path(frame.image_path)
+            if normalized_path in seen_paths:
                 continue
-            seen_paths.add(frame.image_path)
-            selected.append(frame.image_path)
+            seen_paths.add(normalized_path)
+            selected.append(normalized_path)
             if len(selected) >= max_images:
                 break
         return selected
@@ -294,7 +303,7 @@ class RetrievalService:
                     matched_start_ts=start_ts,
                     matched_end_ts=end_ts,
                     score=score,
-                    evidence_images=[frame.image_path],
+                    evidence_images=[self._normalize_evidence_image_path(frame.image_path)],
                     evidence_text=[frame.context_asr_text] if frame.context_asr_text else [],
                 )
             )

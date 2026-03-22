@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.core.config import get_settings
+from app.services.storage import StorageService
 
 router = APIRouter(tags=["demo"])
 settings = get_settings()
@@ -966,9 +967,9 @@ INGEST_HTML = build_page(INGEST_BODY, INGEST_SCRIPT, "ingest")
 
 
 def resolve_evidence_path(raw_path: str) -> Path:
-    candidate = Path(raw_path)
-    data_root = settings.data_path.resolve()
-    resolved = candidate.resolve() if candidate.is_absolute() else (data_root / candidate).resolve()
+    storage_service = StorageService()
+    data_root = storage_service.data_root()
+    resolved = storage_service.resolve_data_path(raw_path)
     try:
         resolved.relative_to(data_root)
     except ValueError as exc:

@@ -63,6 +63,7 @@
   - `raw_metadata jsonb not null`
 - 说明：
   - 主索引固定按 `3s` 一帧抽样
+  - `image_path` 保存相对固定 `data/` 根目录的相对路径，不保存绝对路径
   - `raw_metadata.index_excluded=true` 的帧不参与主检索
 
 ## 索引约定

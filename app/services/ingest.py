@@ -252,7 +252,7 @@ class IngestPipeline:
                 scene_pk=None,
                 frame_index=index,
                 frame_ts=frame_ts,
-                image_path=str(frame_path),
+                image_path=self.storage_service.to_data_relative_path(frame_path),
                 context_asr_text=context_text,
                 raw_metadata={
                     "index_excluded": index_excluded,
@@ -310,7 +310,7 @@ class IngestPipeline:
         payloads = [
             (
                 frame.id,
-                Path(frame.image_path),
+                self.storage_service.resolve_data_path(frame.image_path),
                 frame.context_asr_text,
             )
             for frame in pending_frames
@@ -405,11 +405,12 @@ class IngestPipeline:
         frame_paths: list[Path],
         interval_seconds: float,
     ) -> list[dict[str, float | str]]:
+        storage_service = StorageService()
         return [
             {
                 "frame_index": index,
                 "frame_ts": round(index * interval_seconds, 3),
-                "image_path": str(frame_path),
+                "image_path": storage_service.to_data_relative_path(frame_path),
             }
             for index, frame_path in enumerate(frame_paths)
         ]

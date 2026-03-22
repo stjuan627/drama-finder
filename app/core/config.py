@@ -26,7 +26,6 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://postgres:postgres@localhost:5432/drama_finder"
     )
     redis_url: str = "redis://localhost:6379/0"
-    data_root: Path = defaults.DATA_ROOT
     manifest_root: Path = defaults.MANIFEST_ROOT
 
     gemini_api_key: str | None = None
@@ -61,6 +60,7 @@ class Settings(BaseSettings):
         Path(defaults.ASR_NODE_PUNC_MODEL_PATH) if defaults.ASR_NODE_PUNC_MODEL_PATH else None
     )
     ingest_skip_embeddings: bool = defaults.INGEST_SKIP_EMBEDDINGS
+    frame_embedding_max_workers: int = defaults.FRAME_EMBEDDING_MAX_WORKERS
     low_confidence_threshold: float = defaults.LOW_CONFIDENCE_THRESHOLD
     job_timeout_seconds: int = defaults.JOB_TIMEOUT_SECONDS
     job_retry_count: int = defaults.JOB_RETRY_COUNT
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
 
     @property
     def data_path(self) -> Path:
-        return self.data_root.resolve()
+        return defaults.DATA_ROOT.resolve()
 
 
 @lru_cache(maxsize=1)

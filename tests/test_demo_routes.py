@@ -57,7 +57,11 @@ def test_demo_evidence_serves_image_within_data_root(tmp_path, monkeypatch) -> N
     image_path = data_root / "series" / "sample" / "frames" / "shot-001.jpg"
     image_path.parent.mkdir(parents=True)
     image_path.write_bytes(b"fake-image-bytes")
-    monkeypatch.setattr(demo_routes.settings, "data_root", data_root)
+    monkeypatch.setattr(
+        demo_routes.StorageService,
+        "data_root",
+        staticmethod(lambda: data_root.resolve()),
+    )
 
     response = client.get(
         "/demo/evidence",
@@ -73,7 +77,11 @@ def test_demo_evidence_rejects_non_image_within_data_root(tmp_path, monkeypatch)
     artifact_path = data_root / "series" / "sample" / "artifacts" / "asr_segments.json"
     artifact_path.parent.mkdir(parents=True)
     artifact_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(demo_routes.settings, "data_root", data_root)
+    monkeypatch.setattr(
+        demo_routes.StorageService,
+        "data_root",
+        staticmethod(lambda: data_root.resolve()),
+    )
 
     response = client.get(
         "/demo/evidence",

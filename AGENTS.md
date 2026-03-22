@@ -59,6 +59,8 @@
   - `data/series/<series_id>/audio/`
   - `data/series/<series_id>/frames/`
   - `data/series/<series_id>/artifacts/`
+- 本地数据根目录固定为仓库下 `data/`，不可通过环境变量或运行时配置切换。
+- `frames.image_path` 等文件引用路径默认保存为相对 `data/` 的相对路径，读取时再拼接固定数据根目录。
 
 ## 检索与接口约定
 - `POST /search/image` 是第一优先级主接口。

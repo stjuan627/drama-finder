@@ -44,10 +44,12 @@ def test_run_frame_embedding_job_marks_completed(monkeypatch) -> None:
             self,
             passed_db: object,
             episode_pk: object,
+            max_workers: int,
             progress_callback=None,
         ) -> dict[str, int]:
             assert passed_db is db
             assert episode_pk == job.episode_pk
+            assert max_workers == worker_tasks.settings.frame_embedding_max_workers
             if progress_callback is not None:
                 progress_callback(
                     {"pending": 2, "processed": 2, "updated": 2, "failed": 0, "remaining": 0}
@@ -96,10 +98,12 @@ def test_run_frame_embedding_job_marks_failed(monkeypatch) -> None:
             self,
             passed_db: object,
             episode_pk: object,
+            max_workers: int,
             progress_callback=None,
         ) -> dict[str, int]:
             assert passed_db is db
             assert episode_pk == job.episode_pk
+            assert max_workers == worker_tasks.settings.frame_embedding_max_workers
             raise RuntimeError("boom")
 
     monkeypatch.setattr(worker_tasks, "SessionLocal", fake_session_local)
@@ -131,10 +135,11 @@ def test_run_frame_embedding_job_initializes_progress(monkeypatch) -> None:
 
     class FakePipeline:
         def backfill_frame_embeddings(
-            self, passed_db: object, episode_pk: object, progress_callback
+            self, passed_db: object, episode_pk: object, max_workers: int, progress_callback
         ) -> dict[str, int]:
             assert passed_db is db
             assert episode_pk == job.episode_pk
+            assert max_workers == worker_tasks.settings.frame_embedding_max_workers
             progress_callback(
                 {"pending": 5, "processed": 2, "updated": 2, "failed": 0, "remaining": 3}
             )

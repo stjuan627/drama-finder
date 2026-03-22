@@ -10,6 +10,7 @@
 - `JOB_RETRY_COUNT = 1`
 - `LOW_CONFIDENCE_THRESHOLD = 0.35`
 - `INGEST_SKIP_EMBEDDINGS = false`（保留兼容；首轮 ingest 固定采用 deferred）
+- `FRAME_EMBEDDING_MAX_WORKERS = 4`
 
 ## 模型默认值
 - `gemini_embedding_model = gemini-embedding-2-preview`
@@ -37,18 +38,19 @@
 - `APP_PORT = 8000`
 - `DATABASE_URL = postgresql+psycopg://postgres:postgres@localhost:5432/drama_finder`
 - `REDIS_URL = redis://localhost:6379/0`
-- `DATA_ROOT = ./data`
 - `MANIFEST_ROOT = ./manifests`
 
 ## 默认值使用规则
 - 所有实现文档中的数值默认项统一引用本文件。
 - 业务代码中的常量应与本文件保持一致。
 - 变更任何默认值时，必须同步修改本文件和对应代码常量。
+- 本地数据根目录固定为仓库下 `data/`，不通过环境变量配置。
 - `FRAME_INDEX_INTERVAL_SECONDS = 3` 表示图片路径默认每 3 秒抽一帧。
 - `INTRO_DURATION_SECONDS` 与 `OUTRO_DURATION_SECONDS` 仅影响索引排除范围，不影响时间轴本身。
 - embedding 默认策略为后处理：
   - 首轮 ingest 只写入 `frames` 与 `pending_backfill` 状态，不阻塞等待 Gemini。
   - 后处理任务再批量补齐 `Frame.embedding`，失败帧保留 `embedding_status=failed` 供重试。
+  - 单个 embedding job 内并发默认由 `FRAME_EMBEDDING_MAX_WORKERS` 控制。
 - 长音频 ASR 默认采用 `VAD + stream`：
   - `node` 后端默认走 `ffmpeg + Silero VAD + sherpa-onnx SenseVoice`
   - 检出语音段后立即识别，不再整段音频二次回读

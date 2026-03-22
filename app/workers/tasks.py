@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
+from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.ingest_job import IngestJob
 from app.services.ingest import IngestPipeline
 from sqlalchemy.orm import Session
+
+settings = get_settings()
 
 
 def _update_embedding_progress(job: IngestJob, db: Session, progress: dict[str, int]) -> None:
@@ -48,6 +51,7 @@ def run_frame_embedding_job(job_id: str) -> None:
             result = pipeline.backfill_frame_embeddings(
                 db,
                 job.episode_pk,
+                max_workers=settings.frame_embedding_max_workers,
                 progress_callback=lambda progress: _update_embedding_progress(job, db, progress),
             )
         except Exception as exc:

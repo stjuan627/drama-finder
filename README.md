@@ -13,6 +13,10 @@
 
 详细方案见 [docs/general-plan.md](docs/general-plan.md) 和 [AGENTS.md](AGENTS.md)。
 
+- 本地数据根目录固定为仓库下 `data/`，不通过环境变量配置。
+- `frames.image_path` 默认保存相对 `data/` 的相对路径，例如 `series/<series_id>/<episode_id>/frames/frame_000001.jpg`。
+- frame embedding 并发可通过 `.env` 中的 `FRAME_EMBEDDING_MAX_WORKERS` 调整，默认 `4`。
+
 ## 本地启动
 
 1. 启动基础设施

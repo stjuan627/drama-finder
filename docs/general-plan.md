@@ -70,7 +70,7 @@
 - `shots` 仅作为历史兼容结构保留，不再是当前主入库产物。
 - `frames` 保存：
   - `frame_ts`
-  - `image_path`
+  - `image_path`（相对 `data/` 的相对路径）
   - `context_asr_text`
   - `embedding`
 - 查询接口的目标返回结构应以区间为主，而不是单点时间戳：
@@ -100,5 +100,8 @@
   - `shots` 仅保留兼容，不再作为新入库主产物
   - `frames` 需要恢复为图片主索引
   - `segments/scenes` 不再继续扩大责任边界
+- 本地数据根目录固定为仓库下 `data/`，不再通过运行时配置切换。
+- `frames.image_path` 与 `artifacts/indexed_frames.json` 中的 `image_path` 统一保存相对 `data/` 的相对路径，读取时再基于固定 `data/` 根目录解析。
+- frame embedding 回填默认通过 worker 队列异步执行，单 job 内并发由 `FRAME_EMBEDDING_MAX_WORKERS` 控制。
 - 当前 `ASR` 代码实现仍是历史方案，后续需要切换到 `SenseVoice Small ONNX`，但下游接口保持不变。
 - 后续开发应继续围绕 `frame + ASR text` 收敛，不再引入 `scene/segment` 主层。

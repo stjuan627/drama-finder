@@ -3,12 +3,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 APP_NAME = "Drama Finder"
 APP_ENV = "development"
 APP_HOST = "0.0.0.0"
 APP_PORT = 8000
 
-DATA_ROOT = Path("./data")
+DATA_ROOT = REPO_ROOT / "data"
 MANIFEST_ROOT = Path("./manifests")
 
 EMBEDDING_DIMENSION = 3072
@@ -36,6 +38,7 @@ ASR_NODE_MODEL_DIR = ""
 ASR_NODE_VAD_MODEL_PATH = ""
 ASR_NODE_PUNC_MODEL_PATH = ""
 INGEST_SKIP_EMBEDDINGS = False
+FRAME_EMBEDDING_MAX_WORKERS = 4
 LOW_CONFIDENCE_THRESHOLD = 0.35
 JOB_TIMEOUT_SECONDS = 7200
 JOB_RETRY_COUNT = 1
