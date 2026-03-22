@@ -42,20 +42,18 @@
   3. `ffmpeg` 抽音轨
   4. 本地 ASR
   5. 本地片头片尾检测与裁剪
-  6. `PySceneDetect` 切 shot
-  7. 合并 `segment`
-  8. `Gemini 3 Flash` 可选生成 segment 摘要
-  9. `gemini-embedding-2-preview` 可选生成 segment embedding
-  10. 写入数据库
+  6. `3s` 抽帧
+  7. `gemini-embedding-2-preview` 可选生成 frame embedding
+  8. 写入数据库
 - 入库按 `episode` 级幂等覆盖处理；同一集重跑时替换旧索引和旧元数据。
 - 失败任务保留中间产物，不做媒体文件回滚。
-- 当前允许跳过 embeddings 先完成闭环，但后续必须补回 segment 级 embedding。
+- 当前允许跳过 embeddings 先完成闭环，但后续需要补回 frame 级 embedding。
 
 ## 数据与存储约定
 - 主库固定为 `PostgreSQL + pgvector`。
-- 核心表以 `series`、`episodes`、`ingest_jobs`、`shots`、`segments` 为主。
-- `frames` 只能作为调试或局部回扫辅助，不再作为默认全库主索引。
-- `shots` 必须保留，便于排错和后续 segment 合并。
+- 核心表以 `series`、`episodes`、`ingest_jobs`、`frames` 为主，`shots` 保留兼容。
+- `frames` 是默认图片主索引。
+- `shots` 不再是当前首轮入库的必经产物。
 - 本地文件目录固定为：
   - `data/series/<series_id>/source/`
   - `data/series/<series_id>/audio/`
@@ -65,27 +63,26 @@
 ## 检索与接口约定
 - `POST /search/image` 是第一优先级主接口。
 - 默认检索流程固定为：
-  1. 先查 `segment` topK
-  2. 对候选 `segment` 做精排
+  1. 先查 `frame` topK
+  2. 结合 `ASR` 文本做轻量排序
   3. 返回 `top1 + top3` 的区间候选
 - 第一版返回的主结果必须是时间区间，不是秒级点位。
 - 第一版精排至少包含：
   - embedding 相似度
   - ASR 文本重合度
-  - 邻近 shot 连续性
 - `POST /search/text` 保留，但优先级低于截图检索。
 - 未命中时必须返回显式低置信状态，不能伪造高分结果。
 
 ## 开发顺序
 1. 先完成 `manifest + schema + ingest_jobs`。
-2. 再完成本地 worker，打通 `ASR + shot detection + segment build`。
-3. 然后接入 Gemini scene/segment 摘要与 segment embedding。
+2. 再完成本地 worker，打通 `ASR + frame build`。
+3. 然后接入 Gemini frame embedding。
 4. 最后实现 `search/image`、`search/text`、评测脚本和演示页。
 
 ## 验收标准
-- 单集视频能稳定入库并生成可查询的 `shot` 和 `segment` 记录。
+- 单集视频能稳定入库并生成可查询的 `frame` 记录。
 - 查询结果能返回 `top1` 与 `top3` 区间候选。
-- 主方案与历史高密度 frame 基线可对照评测，但 frame 基线不再是主架构。
+- 如仍保留历史 `shot/segment` 数据，仅作兼容与对照，不再作为主架构。
 - 整季评测目标：
   - `Top1 命中正确 segment >= 70%`
   - `Top5 命中正确 segment >= 90%`

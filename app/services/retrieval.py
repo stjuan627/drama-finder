@@ -3,6 +3,7 @@ from __future__ import annotations
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,7 +12,6 @@ from app.core.config import get_settings
 from app.models.episode import Episode
 from app.models.frame import Frame
 from app.models.series import Series
-from app.models.shot import Shot
 from app.schemas.search import SearchHit, SearchImageResponse
 from app.services.gemini import GeminiConfigurationError, GeminiEmbeddingService
 
@@ -31,7 +31,7 @@ class RetrievalService:
         return self._build_response(hits)
 
     def search_text(self, db: Session, query: str, limit: int = 3) -> SearchImageResponse:
-        hits = self._search_shots(db=db, query=query, limit=limit)
+        hits = self._search_frames_by_text(db=db, query=query, limit=limit)
         return self._build_response(hits)
 
     @staticmethod
@@ -71,6 +71,33 @@ class RetrievalService:
     def _neighbor_text(index: int, texts: list[str]) -> str:
         window = texts[max(0, index - 1) : min(len(texts), index + 2)]
         return "".join(window)
+
+    @staticmethod
+    def _neighbor_frame_text(
+        index: int, frames: Sequence[Frame], max_gap_seconds: float = 6.0
+    ) -> str:
+        current = frames[index]
+        window = [current.context_asr_text]
+
+        previous_index = index - 1
+        if previous_index >= 0:
+            previous = frames[previous_index]
+            if (
+                previous.episode_pk == current.episode_pk
+                and current.frame_ts - previous.frame_ts <= max_gap_seconds
+            ):
+                window.insert(0, previous.context_asr_text)
+
+        next_index = index + 1
+        if next_index < len(frames):
+            following = frames[next_index]
+            if (
+                following.episode_pk == current.episode_pk
+                and following.frame_ts - current.frame_ts <= max_gap_seconds
+            ):
+                window.append(following.context_asr_text)
+
+        return "".join(text.strip() for text in window if text.strip())
 
     def _score_text_candidate(
         self,
@@ -277,23 +304,25 @@ class RetrievalService:
         hits.sort(key=lambda item: item.score, reverse=True)
         return hits[:limit]
 
-    def _search_shots(
+    def _search_frames_by_text(
         self,
         db: Session,
         query: str,
         limit: int,
     ) -> list[SearchHit]:
-        shots = db.scalars(select(Shot).order_by(Shot.start_ts)).all()
-        ranked: list[tuple[float, Shot]] = []
+        frames = db.scalars(
+            select(Frame).order_by(Frame.episode_pk, Frame.frame_ts, Frame.frame_index)
+        ).all()
+        ranked: list[tuple[float, Frame]] = []
         normalized_query = self._normalize_text(query)
-        shot_texts = [str(shot.raw_metadata.get("asr_text", "")).strip() for shot in shots]
+        frame_texts = [frame.context_asr_text.strip() for frame in frames]
 
-        for index, shot in enumerate(shots):
-            asr_text = shot_texts[index]
-            if not asr_text or shot.raw_metadata.get("index_excluded") is True:
+        for index, frame in enumerate(frames):
+            asr_text = frame_texts[index]
+            if not asr_text or frame.raw_metadata.get("index_excluded") is True:
                 continue
 
-            neighbor_text = self._neighbor_text(index, shot_texts)
+            neighbor_text = self._neighbor_frame_text(index, frames)
             score = self._score_text_candidate(
                 normalized_query=normalized_query,
                 normalized_text=self._normalize_text(asr_text),
@@ -301,26 +330,27 @@ class RetrievalService:
             )
             if score <= 0:
                 continue
-            ranked.append((min(0.99, score), shot))
+            ranked.append((min(0.99, score), frame))
 
         ranked.sort(key=lambda item: item[0], reverse=True)
 
         hits: list[SearchHit] = []
         episode_pks: dict[str, object] = {}
-        for score, shot in ranked[: max(limit, settings.text_search_top_k)]:
-            episode = db.get(Episode, shot.episode_pk)
+        for score, frame in ranked[: max(limit, settings.text_search_top_k)]:
+            episode = db.get(Episode, frame.episode_pk)
             series = db.get(Series, episode.series_pk) if episode else None
             if episode is not None:
                 episode_pks[episode.episode_id] = episode.id
+            start_ts, end_ts = self._frame_interval(frame)
             hits.append(
                 SearchHit(
                     series_id=series.series_id if series else "",
                     episode_id=episode.episode_id if episode else "",
-                    matched_start_ts=shot.start_ts,
-                    matched_end_ts=shot.end_ts,
+                    matched_start_ts=start_ts,
+                    matched_end_ts=end_ts,
                     score=score,
                     evidence_images=[],
-                    evidence_text=[str(shot.raw_metadata.get("asr_text", ""))],
+                    evidence_text=[frame.context_asr_text],
                 )
             )
 

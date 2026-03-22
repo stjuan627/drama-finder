@@ -22,19 +22,20 @@
 ## 文本检索
 - 查询流程：
   1. 对查询文本做归一化
-  2. 对 `shot.raw_metadata.asr_text` 与邻接 `shot` 拼接文本做轻量召回
+  2. 对 `frame.context_asr_text` 与邻接 `frame` 拼接文本做轻量召回
   3. 评分至少包含：
      - 子串命中
      - ngram overlap
      - trigram 相似度（`pg_trgm` 或等价实现）
-  4. 返回最相关的 `shot` 或文本片段区间
+  4. 返回最相关的文本片段区间
   5. 不引入 `scene/segment` 中间层
   6. 当前不再返回 `shot` 代表图证据
   7. 返回前对同集相邻命中区间做合并，避免展示多个近似重复候选
 - 约束：
   - 第一阶段不引入 Elasticsearch / Solr / OpenSearch
   - 第一阶段不为文本路径引入 embedding
-  - 目标是先用轻量方案提升错别字和 ASR 噪声下的召回率
+- 目标是先用轻量方案提升错别字和 ASR 噪声下的召回率
+- 文本路径不依赖 `Frame.embedding`，即使图片向量尚未回填也应可用
 
 ## 返回结构
 - `series_id`

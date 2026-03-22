@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.models.episode import Episode
 from app.models.frame import Frame
 from app.models.series import Series
-from app.models.shot import Shot
 from app.services.gemini import GeminiConfigurationError
 from app.services.retrieval import RetrievalService
 
@@ -36,12 +35,10 @@ class FakeSession:
         *,
         frame_rows: list[tuple[Frame, float]] | None = None,
         frames: list[Frame] | None = None,
-        shots: list[Shot] | None = None,
         objects: dict[tuple[type[object], object], object] | None = None,
     ) -> None:
         self._frame_rows = frame_rows or []
         self._frames = frames or []
-        self._shots = shots or []
         self._objects = objects or {}
 
     def execute(self, _statement: object) -> FakeResult:
@@ -52,9 +49,8 @@ class FakeSession:
         column_descriptions = getattr(statement, "column_descriptions", None)
         if column_descriptions:
             entity = column_descriptions[0].get("entity")
-        if entity is Frame:
-            return FakeScalarResult(self._frames)
-        return FakeScalarResult(self._shots)
+        del entity
+        return FakeScalarResult(self._frames)
 
     def get(self, model: type[object], key: object) -> object | None:
         return self._objects.get((model, key))
@@ -83,19 +79,11 @@ def build_series_and_episode() -> tuple[Series, Episode]:
 
 def test_search_text_returns_interval_hit() -> None:
     series, episode = build_series_and_episode()
-    shot = Shot(
-        id=uuid4(),
-        episode_pk=episode.id,
-        shot_index=1,
-        start_ts=12.0,
-        end_ts=18.0,
-        raw_metadata={"asr_text": "皇上驾到", "index_excluded": False},
-    )
     frames = [
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shot.id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=0,
             frame_ts=12.0,
@@ -107,7 +95,7 @@ def test_search_text_returns_interval_hit() -> None:
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shot.id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=1,
             frame_ts=15.0,
@@ -119,7 +107,6 @@ def test_search_text_returns_interval_hit() -> None:
     ]
     db = FakeSession(
         frames=frames,
-        shots=[shot],
         objects={
             (Episode, episode.id): episode,
             (Series, series.id): series,
@@ -140,16 +127,22 @@ def test_search_text_returns_interval_hit() -> None:
 
 def test_search_text_handles_punctuation_and_typos_better() -> None:
     series, episode = build_series_and_episode()
-    shot = Shot(
-        id=uuid4(),
-        episode_pk=episode.id,
-        shot_index=1,
-        start_ts=12.0,
-        end_ts=18.0,
-        raw_metadata={"asr_text": "皇上，驾到！", "index_excluded": False},
-    )
+    frames = [
+        Frame(
+            id=uuid4(),
+            episode_pk=episode.id,
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=12.0,
+            image_path="/tmp/frame_000000.jpg",
+            context_asr_text="皇上，驾到！",
+            raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
+            embedding=None,
+        )
+    ]
     db = FakeSession(
-        shots=[shot],
+        frames=frames,
         objects={
             (Episode, episode.id): episode,
             (Series, series.id): series,
@@ -165,26 +158,34 @@ def test_search_text_handles_punctuation_and_typos_better() -> None:
 
 def test_search_text_can_use_neighbor_context() -> None:
     series, episode = build_series_and_episode()
-    shots = [
-        Shot(
+    frames = [
+        Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_index=1,
-            start_ts=10.0,
-            end_ts=12.0,
-            raw_metadata={"asr_text": "皇上", "index_excluded": False},
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=10.0,
+            image_path="/tmp/frame_neighbor_0.jpg",
+            context_asr_text="皇上",
+            raw_metadata={"sample_interval_seconds": 2.0, "index_excluded": False},
+            embedding=None,
         ),
-        Shot(
+        Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_index=2,
-            start_ts=12.0,
-            end_ts=14.0,
-            raw_metadata={"asr_text": "驾到", "index_excluded": False},
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=1,
+            frame_ts=12.0,
+            image_path="/tmp/frame_neighbor_1.jpg",
+            context_asr_text="驾到",
+            raw_metadata={"sample_interval_seconds": 2.0, "index_excluded": False},
+            embedding=None,
         ),
     ]
     db = FakeSession(
-        shots=shots,
+        frames=frames,
         objects={
             (Episode, episode.id): episode,
             (Series, series.id): series,
@@ -201,19 +202,23 @@ def test_search_text_can_use_neighbor_context() -> None:
 
 def test_search_text_returns_empty_images_when_no_frames_overlap() -> None:
     series, episode = build_series_and_episode()
-    shot = Shot(
-        id=uuid4(),
-        episode_pk=episode.id,
-        shot_index=1,
-        start_ts=12.0,
-        end_ts=18.0,
-        raw_metadata={"asr_text": "皇上驾到", "index_excluded": False},
-    )
     frames = [
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shot.id,
+            shot_pk=None,
+            scene_pk=None,
+            frame_index=0,
+            frame_ts=12.0,
+            image_path="/tmp/frame_000000.jpg",
+            context_asr_text="皇上驾到",
+            raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
+            embedding=None,
+        ),
+        Frame(
+            id=uuid4(),
+            episode_pk=episode.id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=0,
             frame_ts=30.0,
@@ -221,35 +226,26 @@ def test_search_text_returns_empty_images_when_no_frames_overlap() -> None:
             context_asr_text="无关帧",
             raw_metadata={"sample_interval_seconds": 3.0, "index_excluded": False},
             embedding=None,
-        )
+        ),
     ]
     db = FakeSession(
         frames=frames,
-        shots=[shot],
         objects={(Episode, episode.id): episode, (Series, series.id): series},
     )
 
     response = RetrievalService().search_text(cast(Session, db), "皇上驾到", limit=3)
 
     assert len(response.hits) == 1
-    assert response.hits[0].evidence_images == []
+    assert response.hits[0].evidence_images == ["/tmp/frame_000000.jpg"]
 
 
 def test_search_text_limits_evidence_images_to_five() -> None:
     series, episode = build_series_and_episode()
-    shot = Shot(
-        id=uuid4(),
-        episode_pk=episode.id,
-        shot_index=1,
-        start_ts=12.0,
-        end_ts=18.0,
-        raw_metadata={"asr_text": "皇上驾到", "index_excluded": False},
-    )
     frames = [
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shot.id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=index,
             frame_ts=12.0 + index * 0.5,
@@ -262,7 +258,6 @@ def test_search_text_limits_evidence_images_to_five() -> None:
     ]
     db = FakeSession(
         frames=frames,
-        shots=[shot],
         objects={(Episode, episode.id): episode, (Series, series.id): series},
     )
 
@@ -280,29 +275,11 @@ def test_search_text_limits_evidence_images_to_five() -> None:
 
 def test_search_text_merged_hits_collect_images_from_merged_interval() -> None:
     series, episode = build_series_and_episode()
-    shots = [
-        Shot(
-            id=uuid4(),
-            episode_pk=episode.id,
-            shot_index=1,
-            start_ts=10.0,
-            end_ts=12.0,
-            raw_metadata={"asr_text": "皇上", "index_excluded": False},
-        ),
-        Shot(
-            id=uuid4(),
-            episode_pk=episode.id,
-            shot_index=2,
-            start_ts=15.0,
-            end_ts=17.0,
-            raw_metadata={"asr_text": "驾到", "index_excluded": False},
-        ),
-    ]
     frames = [
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shots[0].id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=0,
             frame_ts=10.5,
@@ -314,7 +291,7 @@ def test_search_text_merged_hits_collect_images_from_merged_interval() -> None:
         Frame(
             id=uuid4(),
             episode_pk=episode.id,
-            shot_pk=shots[1].id,
+            shot_pk=None,
             scene_pk=None,
             frame_index=1,
             frame_ts=15.5,
@@ -326,15 +303,14 @@ def test_search_text_merged_hits_collect_images_from_merged_interval() -> None:
     ]
     db = FakeSession(
         frames=frames,
-        shots=shots,
         objects={(Episode, episode.id): episode, (Series, series.id): series},
     )
 
     response = RetrievalService().search_text(cast(Session, db), "皇上驾到", limit=3)
 
     assert len(response.hits) == 1
-    assert response.hits[0].matched_start_ts == 10.0
-    assert response.hits[0].matched_end_ts == 17.0
+    assert response.hits[0].matched_start_ts == 10.5
+    assert response.hits[0].matched_end_ts == 16.5
     assert response.hits[0].evidence_images == [
         "/tmp/frame_merged_1.jpg",
         "/tmp/frame_merged_2.jpg",
@@ -356,16 +332,26 @@ def test_search_image_returns_low_confidence_when_gemini_is_unavailable() -> Non
     assert response.hits == []
 
 
+def test_search_image_returns_low_confidence_when_embeddings_are_missing() -> None:
+    series, episode = build_series_and_episode()
+    db = FakeSession(
+        frame_rows=[],
+        objects={(Episode, episode.id): episode, (Series, series.id): series},
+    )
+    service = RetrievalService()
+    service.embedding_service.embed_image = lambda image_path, task_type="RETRIEVAL_QUERY": [
+        0.1,
+        0.2,
+    ]
+
+    response = service.search_image(cast(Session, db), Path("/tmp/query.jpg"), limit=3)
+
+    assert response.low_confidence is True
+    assert response.hits == []
+
+
 def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
     series, episode = build_series_and_episode()
-    shot = Shot(
-        id=uuid4(),
-        episode_pk=episode.id,
-        shot_index=1,
-        start_ts=0.0,
-        end_ts=30.0,
-        raw_metadata={"asr_text": "测试台词", "index_excluded": False},
-    )
     objects = {
         (Episode, episode.id): episode,
         (Series, series.id): series,
@@ -375,7 +361,7 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
             Frame(
                 id=uuid4(),
                 episode_pk=episode.id,
-                shot_pk=shot.id,
+                shot_pk=None,
                 scene_pk=None,
                 frame_index=0,
                 frame_ts=0.0,
@@ -390,7 +376,7 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
             Frame(
                 id=uuid4(),
                 episode_pk=episode.id,
-                shot_pk=shot.id,
+                shot_pk=None,
                 scene_pk=None,
                 frame_index=1,
                 frame_ts=3.0,
@@ -405,7 +391,7 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
             Frame(
                 id=uuid4(),
                 episode_pk=episode.id,
-                shot_pk=shot.id,
+                shot_pk=None,
                 scene_pk=None,
                 frame_index=2,
                 frame_ts=5.0,
@@ -420,7 +406,7 @@ def test_search_image_skips_excluded_frames_and_deduplicates_ranges() -> None:
             Frame(
                 id=uuid4(),
                 episode_pk=episode.id,
-                shot_pk=shot.id,
+                shot_pk=None,
                 scene_pk=None,
                 frame_index=3,
                 frame_ts=9.0,

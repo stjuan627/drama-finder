@@ -23,7 +23,6 @@ from app.services.gemini import GeminiEmbeddingService
 from app.services.manifest import ManifestError, ManifestService
 from app.services.media import FFmpegService
 from app.services.queue import QueueService
-from app.services.scene_detection import ShotDetectionService
 from app.services.storage import StorageService
 
 logger = logging.getLogger(__name__)
@@ -61,7 +60,7 @@ class IngestService:
             status=JobStatus.QUEUED,
             current_stage=JobStage.MANIFEST,
             progress_current=0,
-            progress_total=6,
+            progress_total=5,
             attempt=1 if existing is None else existing.attempt + 1,
             artifacts={},
         )
@@ -83,8 +82,8 @@ class IngestPipeline:
         self.storage_service = StorageService()
         self.ffmpeg_service = FFmpegService()
         self.asr_service = ASRService()
-        self.shot_service = ShotDetectionService()
         self.embedding_service = GeminiEmbeddingService()
+        self.queue_service = QueueService()
 
     def run(self, db: Session, job_id: UUID | str) -> IngestJob:
         job = db.get(IngestJob, UUID(str(job_id)))
@@ -121,7 +120,6 @@ class IngestPipeline:
 
             audio_path = paths.audio / "audio.wav"
             asr_path = paths.artifacts / "asr_segments.json"
-            shots_path = paths.artifacts / "shots.json"
             frames_manifest_path = paths.artifacts / "indexed_frames.json"
 
             self._update_stage(db, job, JobStage.AUDIO_EXTRACTION, 1)
@@ -138,19 +136,9 @@ class IngestPipeline:
                     encoding="utf-8",
                 )
 
-            self._update_stage(db, job, JobStage.SHOT_DETECTION, 3)
-            if shots_path.exists():
-                shots = self._load_json(shots_path)
-            else:
-                shots = self.shot_service.detect_shots(video_path)
-                shots_path.write_text(
-                    json.dumps(shots, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-
             self._remove_legacy_shot_frames(paths.frames)
 
-            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 4)
+            self._update_stage(db, job, JobStage.FRAME_EXTRACTION, 3)
             frame_paths = self.ffmpeg_service.extract_frames(
                 video_path,
                 paths.frames,
@@ -165,19 +153,11 @@ class IngestPipeline:
                 encoding="utf-8",
             )
 
-            self._update_stage(db, job, JobStage.EMBEDDINGS, 5)
+            self._update_stage(db, job, JobStage.EMBEDDINGS, 4)
             self._replace_episode_artifacts(db, episode.id)
-            persisted_shots = self._persist_shots(
-                db=db,
-                episode=episode,
-                shots=shots,
-                asr_segments=asr_segments,
-                excluded_ranges=excluded_ranges,
-            )
             persisted_frames = self._persist_frames(
                 db=db,
                 episode=episode,
-                shots=persisted_shots,
                 frame_paths=frame_paths,
                 asr_segments=asr_segments,
                 excluded_ranges=excluded_ranges,
@@ -187,7 +167,7 @@ class IngestPipeline:
                 1 for frame in persisted_frames if self._frame_needs_embedding(frame)
             )
 
-            self._update_stage(db, job, JobStage.PERSIST, 6)
+            self._update_stage(db, job, JobStage.PERSIST, 5)
             job.status = JobStatus.COMPLETED
             job.progress_current = job.progress_total
             job.finished_at = datetime.now(UTC)
@@ -195,17 +175,20 @@ class IngestPipeline:
                 **job.artifacts,
                 "audio_path": str(audio_path),
                 "asr_segments_path": str(asr_path),
-                "shots_path": str(shots_path),
                 "indexed_frames_path": str(frames_manifest_path),
-                "shot_count": len(persisted_shots),
+                "shot_count": 0,
                 "frame_count": len(persisted_frames),
                 "index_excluded_ranges": excluded_ranges,
                 "frame_index_interval_seconds": FRAME_INDEX_INTERVAL_SECONDS,
                 "embedding_mode": "deferred",
                 "pending_frame_embeddings": pending_frame_embeddings,
+                "embedding_status": self._initial_embedding_status(pending_frame_embeddings),
+                "embedding_error": None,
             }
             db.add(job)
             db.commit()
+
+            self._enqueue_frame_embedding_job(db, job, pending_frame_embeddings)
             db.refresh(job)
             return job
         except Exception as exc:
@@ -235,45 +218,10 @@ class IngestPipeline:
         db.execute(delete(Shot).where(Shot.episode_pk == episode_pk))
         db.commit()
 
-    def _persist_shots(
-        self,
-        db: Session,
-        episode: Episode,
-        shots: list[dict],
-        asr_segments: list[dict],
-        excluded_ranges: list[dict[str, float]],
-    ) -> list[Shot]:
-        persisted: list[Shot] = []
-        for shot in shots:
-            start_ts = float(shot["start"])
-            end_ts = float(shot["end"])
-            asr_text = self._collect_asr_text(asr_segments, start_ts, end_ts)
-            model = Shot(
-                episode_pk=episode.id,
-                shot_index=shot["shot_index"],
-                start_ts=start_ts,
-                end_ts=end_ts,
-                raw_metadata={
-                    **shot,
-                    "asr_text": asr_text,
-                    "index_excluded": self._overlaps_excluded_range(
-                        start_ts,
-                        end_ts,
-                        excluded_ranges,
-                    ),
-                },
-            )
-            db.add(model)
-            persisted.append(model)
-
-        db.flush()
-        return persisted
-
     def _persist_frames(
         self,
         db: Session,
         episode: Episode,
-        shots: list[Shot],
         frame_paths: list[Path],
         asr_segments: list[dict],
         excluded_ranges: list[dict[str, float]],
@@ -286,7 +234,6 @@ class IngestPipeline:
             if frame_ts > duration_seconds:
                 break
 
-            matched_shot = self._match_shot(frame_ts, shots)
             context_text = self._collect_asr_text(
                 asr_segments,
                 max(0.0, frame_ts - settings.asr_context_window_seconds),
@@ -300,7 +247,7 @@ class IngestPipeline:
 
             model = Frame(
                 episode_pk=episode.id,
-                shot_pk=matched_shot.id if matched_shot else None,
+                shot_pk=None,
                 scene_pk=None,
                 frame_index=index,
                 frame_ts=frame_ts,
@@ -463,13 +410,6 @@ class IngestPipeline:
         )
 
     @staticmethod
-    def _match_shot(frame_ts: float, shots: list[Shot]) -> Shot | None:
-        for shot in shots:
-            if shot.start_ts <= frame_ts <= shot.end_ts:
-                return shot
-        return None
-
-    @staticmethod
     def _load_json(path: Path) -> list[dict]:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, list):
@@ -480,3 +420,28 @@ class IngestPipeline:
     def _frame_needs_embedding(frame: Frame) -> bool:
         metadata = frame.raw_metadata or {}
         return frame.embedding is None and metadata.get("index_excluded") is not True
+
+    @staticmethod
+    def _initial_embedding_status(pending_frame_embeddings: int) -> str:
+        if settings.ingest_skip_embeddings:
+            return "skipped"
+        if pending_frame_embeddings <= 0:
+            return "completed"
+        return "deferred"
+
+    def _enqueue_frame_embedding_job(
+        self,
+        db: Session,
+        job: IngestJob,
+        pending_frame_embeddings: int,
+    ) -> None:
+        if settings.ingest_skip_embeddings or pending_frame_embeddings <= 0:
+            return
+
+        queue_id = self.queue_service.enqueue_frame_embedding(str(job.id))
+        artifacts = dict(job.artifacts or {})
+        artifacts["embedding_status"] = "queued"
+        artifacts["embedding_rq_job_id"] = queue_id
+        job.artifacts = artifacts
+        db.add(job)
+        db.commit()

@@ -10,8 +10,8 @@
 
 ## 核心设计
 1. 入库与切分
-- 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> shot detection -> 3 秒采样 frame -> 可选 embedding -> 写库`。
-- `shot detection` 继续由本地方案负责，首选 `PySceneDetect`。
+- 每集固定流程为：`加载 manifest -> 音轨提取 -> ASR -> 3 秒采样 frame -> 可选 embedding -> 写库`。
+- 当前主入库链不再运行 `shot detection`；`shot` 仅保留为兼容层，不再作为首轮入库的必经步骤。
 - `ASR` 首选 `SenseVoice Small ONNX`，默认配置为：
   - 模型：`iic/SenseVoiceSmall`
   - 推理：`Node.js + sherpa-onnx`
@@ -40,15 +40,15 @@
 - 文本检索增强固定走轻量方案：
   - `PostgreSQL pg_trgm`
   - 查询文本归一化
-  - `shot` 邻接文本拼接
+  - `frame` 邻接文本拼接
   - 规则分数 + trigram 相似度混合排序
-- `shot` 继续保留为底层切分事实，但不是图片主索引。
+- `shot` 暂保留兼容，但当前首轮入库与主检索不再依赖 `shot`。
 - 默认检索流程：
   1. 图片查询生成 query embedding
   2. 查询 `frame` topK
   3. 返回 `frame_ts ~ frame_ts+3s` 的候选区间
   4. 文本查询对 `ASR` 文本做归一化与模糊召回，并返回对应区间
-- 后续如需更细定位，可在命中 `frame` 后局部回扫相邻帧或对应 `shot`，但这不是 V1 主链路。
+- 后续如需更细定位，可在命中 `frame` 后局部回扫相邻帧，但这不是 V1 主链路。
 
 4. 成本与准确率策略
 - 默认不做高密度 `1fps frame embedding`。
@@ -65,13 +65,9 @@
   - `series`
   - `episodes`
   - `ingest_jobs`
-  - `shots`
   - `frames`
 - `frames` 现在是图片主索引，不再只是辅助产物。
-- `shots` 保存：
-  - `start_ts`
-  - `end_ts`
-  - `asr_text`
+- `shots` 仅作为历史兼容结构保留，不再是当前主入库产物。
 - `frames` 保存：
   - `frame_ts`
   - `image_path`
@@ -86,7 +82,7 @@
 
 ## 测试与验收
 - 入库验收：
-  - 单集视频能稳定产出 `shots` 与 `frames`
+- 单集视频能稳定产出 `frames`
   - `manifest` 中的片头片尾配置能影响索引排除范围
 - 检索验收：
   - 返回结果必须是可信区间
@@ -98,10 +94,10 @@
   - 返回区间覆盖人工标注剧情片段
 
 ## 当前实现与目标差异
-- 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，接下来主链改为 `frame + ASR text`。
-- 已人工验证 `ep01` 的 shot 切分结果，当前切分质量可接受。
+- 当前代码已真实跑通 `wufulinmen / ep01` 入库闭环，主链继续收敛为 `frame + ASR text`。
+- `shot` 已不再参与当前首轮入库主链；历史 `shot` 结果仅保留兼容和对照用途。
 - 当前真实产物里：
-  - `shots` 可用
+  - `shots` 仅保留兼容，不再作为新入库主产物
   - `frames` 需要恢复为图片主索引
   - `segments/scenes` 不再继续扩大责任边界
 - 当前 `ASR` 代码实现仍是历史方案，后续需要切换到 `SenseVoice Small ONNX`，但下游接口保持不变。

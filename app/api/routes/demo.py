@@ -863,9 +863,13 @@ INGEST_SCRIPT = """
       el.jobStatus.textContent = payload.status || "-";
       el.jobStage.textContent = payload.current_stage || "-";
       el.jobProgress.textContent = `${payload.progress_current ?? 0} / ${payload.progress_total ?? 0}`;
+      const embeddingStatus = payload.artifacts?.embedding_status;
       const messageClass =
         payload.status === "completed" ? "ok" : payload.status === "failed" ? "bad" : "";
-      const detail = payload.error_message ? `错误：${payload.error_message}` : "任务记录已更新。";
+      let detail = payload.error_message ? `错误：${payload.error_message}` : "任务记录已更新。";
+      if (embeddingStatus) {
+        detail += ` 图片向量状态：${embeddingStatus}。`;
+      }
       el.jobMessage.innerHTML = `<span class="${messageClass}">${escapeHtml(detail)}</span>`;
       el.jobPayload.textContent = JSON.stringify(payload, null, 2);
     }

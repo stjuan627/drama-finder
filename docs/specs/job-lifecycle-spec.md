@@ -10,7 +10,6 @@
 - `manifest`
 - `audio_extraction`
 - `asr`
-- `shot_detection`
 - `frame_extraction`
 - `embeddings`
 - `persist`
@@ -21,6 +20,7 @@
 3. pipeline 每完成一个阶段，更新 `current_stage` 与 `progress_current`。
 4. 任一阶段抛出异常，任务改为 `failed`。
 5. 全部阶段成功，任务改为 `completed`。
+6. 如存在待回填 `frame embedding`，ingest 完成后自动进入独立 `embedding` 队列继续后处理。
 
 ## 并发规则
 - 同一 `(series_pk, episode_pk)` 最近任务为 `queued/running` 时，不再新建重复任务。
@@ -29,6 +29,11 @@
 ## 错误处理
 - 失败时保留中间产物，不自动回滚媒体文件。
 - 正式方案中，embedding 失败不应迫使整条入库重跑；应允许拆成后处理任务。
+
+## Embedding 后处理
+- `ingest_jobs.artifacts.embedding_status` 负责记录向量化子状态。
+- 推荐状态：`deferred -> queued -> running -> completed|failed`。
+- 文本检索不依赖该状态；图片检索仅在 `Frame.embedding` 已回填时可命中。
 
 ## 计数字段
 - `ingest_jobs` 可将 `shot_count / frame_count` 记录到 `artifacts`。
