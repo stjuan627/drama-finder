@@ -1,5 +1,4 @@
-import React, { useState, useRef } from 'react';
-import { Hero } from '../components/Hero';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../api/api';
 import { SearchResponse } from '../types/api';
 import { ImagePreview } from '../components/ImagePreview';
@@ -8,18 +7,84 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '检索失败，请稍后再试。';
 }
 
-interface SearchPageProps {
-  onNavigate: (page: 'search' | 'ingest') => void;
-}
+type SearchMode = 'text' | 'image';
 
-export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
+export const SearchPage: React.FC = () => {
+  const [searchMode, setSearchMode] = useState<SearchMode>('text');
   const [queryText, setQueryText] = useState('皇上驾到');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<{ images: string[]; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
+  const handleFileChange = useCallback((file: File | null) => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    if (file) {
+      setImageFile(file);
+      setImagePreviewUrl(URL.createObjectURL(file));
+    } else {
+      setImageFile(null);
+      setImagePreviewUrl(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [imagePreviewUrl]);
+
+  const applyPastedImage = useCallback((items: DataTransferItemList | undefined | null) => {
+    if (!items) {
+      return false;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          handleFileChange(file);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }, [handleFileChange]);
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (applyPastedImage(e.clipboardData?.items)) {
+      e.preventDefault();
+    }
+  };
+
+  useEffect(() => {
+    if (searchMode !== 'image') {
+      return undefined;
+    }
+
+    const handleWindowPaste = (event: ClipboardEvent) => {
+      if (applyPastedImage(event.clipboardData?.items)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('paste', handleWindowPaste);
+    return () => {
+      window.removeEventListener('paste', handleWindowPaste);
+    };
+  }, [applyPastedImage, searchMode]);
 
   const secondsToLabel = (value: number) => {
     const total = Math.max(0, Math.floor(value || 0));
@@ -48,15 +113,14 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
   };
 
   const handleImageSearch = async () => {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      setError('请先选择截图文件。');
+    if (!imageFile) {
+      setError('请先选择或粘贴截图文件。');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const data = await api.searchImage(file);
+      const data = await api.searchImage(imageFile);
       setResults(data);
     } catch (error: unknown) {
       setError(getErrorMessage(error));
@@ -82,85 +146,134 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
 
   return (
     <>
-      <Hero
-        eyebrow="Drama Finder / Search"
-        title="默认进入检索，把线索压缩成一张图或一句台词。"
-        description="当前 demo 已拆成检索页与入库页。这里优先承载日常查询：顶部输入线索，下面直接查看候选区间、置信度、文本证据，以及可附带的关联截图。"
-        activePage="search"
-        onNavigate={onNavigate}
-      />
-
       <section className="search-shell grid gap-[18px]">
-        <section className="panel search-grid grid grid-cols-1 lg:grid-cols-[1.45fr_0.95fr] gap-[18px] items-start">
+        <section className="panel search-grid grid grid-cols-1 gap-[18px] items-start">
           <div className="search-form grid gap-4">
-            <div>
-              <h2 className="m-0 mb-4 text-xl font-bold">常规搜索框</h2>
-              <div className="sub -mt-2 mb-[18px] text-muted text-[13px] leading-relaxed font-sans">
-                文本检索作为主入口，截图检索作为补充入口；两种方式都会把结果落到下方统一列表。
-              </div>
+            <div className="tabs" role="tablist" aria-label="选择检索模式">
+              <button
+                type="button"
+                className={`tab-btn ${searchMode === 'text' ? 'active' : ''}`}
+                onClick={() => {
+                  setError(null);
+                  setSearchMode('text');
+                }}
+                role="tab"
+                id="search-tab-text"
+                aria-selected={searchMode === 'text'}
+                aria-controls="search-panel-text"
+              >
+                文搜
+              </button>
+              <button
+                type="button"
+                className={`tab-btn ${searchMode === 'image' ? 'active' : ''}`}
+                onClick={() => {
+                  setError(null);
+                  setSearchMode('image');
+                }}
+                role="tab"
+                id="search-tab-image"
+                aria-selected={searchMode === 'image'}
+                aria-controls="search-panel-image"
+              >
+                图搜
+              </button>
             </div>
-            <div>
-              <label htmlFor="queryText" className="block mb-1.5 text-muted text-xs font-sans">台词文本</label>
-              <textarea
-                id="queryText"
-                className="w-full min-h-[124px] resize-vertical"
-                placeholder="例如：皇上驾到"
-                value={queryText}
-                onChange={(e) => setQueryText(e.target.value)}
-              />
-            </div>
-            <div className="search-actions grid grid-cols-1 md:grid-cols-[1fr_220px] gap-3 items-end">
-              <div>
-                <label htmlFor="imageFile" className="block mb-1.5 text-muted text-xs font-sans">关联截图（可选）</label>
-                <input
-                  id="imageFile"
-                  type="file"
-                  accept="image/*"
-                  className="w-full"
-                  ref={fileInputRef}
+
+            {searchMode === 'text' ? (
+              <div
+                className="grid gap-4"
+                role="tabpanel"
+                id="search-panel-text"
+                aria-labelledby="search-tab-text"
+              >
+                <textarea
+                  id="queryText"
+                  aria-label="台词文本检索"
+                  className="w-full min-h-[124px] resize-vertical"
+                  placeholder="输入一句台词，如：皇上驾到"
+                  value={queryText}
+                  onChange={(e) => setQueryText(e.target.value)}
                 />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="primary w-full md:w-auto"
+                    onClick={handleTextSearch}
+                    disabled={loading}
+                  >
+                    {loading ? '检索中...' : '开始检索'}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                className="primary"
-                onClick={handleTextSearch}
-                disabled={loading}
+            ) : (
+              <div
+                className="grid gap-4"
+                role="tabpanel"
+                id="search-panel-image"
+                aria-labelledby="search-tab-image"
               >
-                {loading ? '检索中...' : '开始文本检索'}
-              </button>
-            </div>
-            <div className="actions flex gap-2.5 mt-3.5">
-              <button
-                type="button"
-                className="secondary w-full md:w-auto"
-                onClick={handleImageSearch}
-                disabled={loading}
-              >
-                仅用截图检索
-              </button>
-            </div>
+                <button
+                  type="button"
+                  className={`drop-zone ${imagePreviewUrl ? 'has-image' : ''}`}
+                  onClick={() => fileInputRef.current?.click()}
+                  onPaste={handlePaste}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                      handleFileChange(file);
+                    }
+                  }}
+                  aria-label="上传或粘贴图片"
+                >
+                  <input
+                    id="imageFile"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                  />
+                  {imagePreviewUrl ? (
+                    <div className="image-preview-container">
+                      <img src={imagePreviewUrl} alt="待检索截图预览" />
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 image-upload-empty">
+                      <div className="text-accent text-lg mb-1">点击上传 或 粘贴图片</div>
+                      <div className="text-muted text-xs">支持拖拽图片文件到此处</div>
+                    </div>
+                  )}
+                </button>
+                <div className="image-upload-actions">
+                  {imagePreviewUrl && (
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={() => handleFileChange(null)}
+                      title="移除图片"
+                      aria-label="移除图片"
+                    >
+                      移除图片
+                    </button>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="primary w-full md:w-auto"
+                    onClick={handleImageSearch}
+                    disabled={loading || !imageFile}
+                  >
+                    {loading ? '检索中...' : '开始检索'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="search-hint-grid grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
-            <div className="hint-card p-4 rounded-[18px] bg-white/60 border border-line">
-              <strong className="block mb-1.5 text-sm font-bold">默认检索页</strong>
-              <span className="text-muted text-xs leading-relaxed font-sans">
-                打开 demo 就落到查询流程，避免被入库表单分散注意力。
-              </span>
-            </div>
-            <div className="hint-card p-4 rounded-[18px] bg-white/60 border border-line">
-              <strong className="block mb-1.5 text-sm font-bold">结果附图</strong>
-              <span className="text-muted text-xs leading-relaxed font-sans">
-                命中结果可展示关联截图；若图片暂不可直连，也会保留路径证据。
-              </span>
-            </div>
-            <div className="hint-card p-4 rounded-[18px] bg-white/60 border border-line">
-              <strong className="block mb-1.5 text-sm font-bold">区间优先</strong>
-              <span className="text-muted text-xs leading-relaxed font-sans">
-                仍以 `剧集 + 时间区间` 为主结果，截图与文本只作为证据补充。
-              </span>
-            </div>
-          </div>
         </section>
 
         <section className="panel results-panel grid gap-4">

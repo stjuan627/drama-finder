@@ -16,7 +16,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate
               Drama Finder
             </div>
             <div className="brand-title text-lg font-bold">
-              剧集片段定位 Demo
+              一句台词，一张截图，找到剧集。
             </div>
           </div>
           <nav className="nav flex flex-wrap gap-2.5">

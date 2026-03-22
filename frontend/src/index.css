@@ -72,3 +72,64 @@ button.primary {
 button.secondary {
   @apply text-text bg-white/90 border border-line;
 }
+
+.tabs {
+  @apply flex gap-2 mb-6 border-b border-line pb-px;
+}
+
+.tab-btn {
+  @apply px-6 py-2.5 rounded-t-2xl border-0 bg-transparent text-muted font-bold transition-all cursor-pointer relative;
+}
+
+.tab-btn:hover {
+  @apply text-text bg-white/40;
+}
+
+.tab-btn:focus-visible {
+  @apply outline-none ring-2 ring-accent/35 ring-offset-2 ring-offset-bg;
+}
+
+.tab-btn.active {
+  @apply text-accent bg-white/80;
+}
+
+.tab-btn.active::after {
+  content: '';
+  @apply absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full;
+}
+
+.drop-zone {
+  @apply border-2 border-dashed border-line rounded-2xl p-8 flex flex-col items-center justify-center gap-3 bg-white/40 transition-all cursor-pointer hover:bg-white/60 hover:border-accent-soft;
+}
+
+.drop-zone.has-image {
+  @apply border-accent-soft bg-white/80;
+}
+
+.drop-zone:focus-visible {
+  @apply outline-none ring-2 ring-accent/35 ring-offset-2 ring-offset-bg;
+}
+
+.image-preview-container {
+  @apply relative w-full max-w-md aspect-video rounded-xl overflow-hidden border border-line bg-white shadow-sm;
+}
+
+.image-preview-container img {
+  @apply w-full h-full object-contain;
+}
+
+.image-upload-actions {
+  @apply flex flex-wrap items-center justify-end gap-2;
+}
+
+.remove-image-btn {
+  @apply text-white bg-[#7d3c24] shadow-none;
+}
+
+.remove-image-btn:hover {
+  @apply bg-[#69311d];
+}
+
+.remove-image-btn:focus-visible {
+  @apply outline-none ring-2 ring-accent/35 ring-offset-2 ring-offset-bg;
+}

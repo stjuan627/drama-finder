@@ -53,7 +53,7 @@ function App() {
   return (
     <Layout activePage={activePage} onNavigate={handleNavigate}>
       {activePage === 'search' ? (
-        <SearchPage onNavigate={handleNavigate} />
+        <SearchPage />
       ) : (
         <IngestPage onNavigate={handleNavigate} />
       )}
