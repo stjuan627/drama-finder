@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f3ecdf;
+  --panel: rgba(255, 250, 241, 0.84);
+  --panel-strong: #fff9ef;
+  --line: rgba(85, 54, 32, 0.18);
+  --text: #2f1f15;
+  --muted: #7f6758;
+  --accent: #9e4f2b;
+  --accent-soft: #e8b487;
+  --success: #2f7d57;
+  --danger: #b0493a;
+  --shadow: 0 18px 50px rgba(60, 35, 18, 0.10);
+}
+
+body {
+  @apply bg-bg text-text font-serif;
+  background:
+    radial-gradient(circle at top left, rgba(230, 186, 127, 0.28), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(136, 73, 36, 0.12), transparent 26%),
+    linear-gradient(180deg, #fbf6ee, var(--bg));
+  min-height: 100vh;
+}
+
+.nav-link {
+  @apply px-4 py-2.5 rounded-full border border-line bg-white/70 no-underline text-muted font-sans text-sm transition-all duration-200;
+}
+
+.nav-link:hover {
+  @apply -translate-y-0.5 text-text;
+}
+
+.nav-link.active {
+  @apply text-white bg-gradient-to-br from-accent to-[#ba6840] border-transparent shadow-[0_12px_24px_rgba(158,79,43,0.18)];
+}
+
+.panel {
+  @apply border border-line rounded-[24px] p-[22px] bg-panel shadow-custom backdrop-blur-[10px];
+}
+
+.hit {
+  @apply flex flex-col gap-3.5 border border-line rounded-[22px] bg-panel-strong p-5 transition-all duration-200;
+}
+
+.hit:hover {
+  @apply -translate-y-0.5 shadow-[0_12px_30px_rgba(60,35,18,0.08)];
+}
+
+.json-box {
+  @apply rounded-[18px] bg-[#2e1d12]/90 text-[#f5eee3] p-4 text-xs leading-relaxed overflow-auto whitespace-pre-wrap break-words font-mono;
+}
+
+input, textarea {
+  @apply border border-line rounded-2xl bg-white/85 text-text px-4 py-3.5 outline-none transition-all duration-200 font-sans;
+}
+
+input:focus, textarea:focus {
+  @apply border-accent/55 shadow-[0_0_0_4px_rgba(158,79,43,0.08)] -translate-y-px;
+}
+
+button {
+  @apply border-0 cursor-pointer rounded-full px-[18px] py-[13px] font-bold transition-all duration-200 font-sans disabled:cursor-wait disabled:opacity-70 disabled:transform-none;
+}
+
+button.primary {
+  @apply text-white bg-gradient-to-br from-accent to-[#ba6840] shadow-[0_12px_24px_rgba(158,79,43,0.22)];
+}
+
+button.secondary {
+  @apply text-text bg-white/90 border border-line;
+}

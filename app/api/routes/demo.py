@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.core.config import get_settings
+from app.api.routes.frontend import render_frontend_shell
 from app.services.storage import StorageService
 
 router = APIRouter(tags=["demo"])
@@ -983,17 +984,17 @@ def resolve_evidence_path(raw_path: str) -> Path:
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 def demo_home() -> str:
-    return SEARCH_HTML
+    return render_frontend_shell("search")
 
 
 @router.get("/search", response_class=HTMLResponse, include_in_schema=False)
 def search_page() -> str:
-    return SEARCH_HTML
+    return render_frontend_shell("search")
 
 
 @router.get("/ingest", response_class=HTMLResponse, include_in_schema=False)
 def ingest_page() -> str:
-    return INGEST_HTML
+    return render_frontend_shell("ingest")
 
 
 @router.get("/demo", response_class=HTMLResponse, include_in_schema=False)

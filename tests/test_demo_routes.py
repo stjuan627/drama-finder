@@ -13,29 +13,37 @@ def test_root_serves_search_page() -> None:
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "默认进入检索" in response.text
-    assert "常规搜索框" in response.text
-    assert "结果列表" in response.text
-    assert "入库任务" not in response.text
+    assert 'name="drama-finder-route" content="search"' in response.text
+    assert 'window.__DRAMA_FINDER_PAGE__ = "search"' in response.text
 
 
 def test_search_alias_serves_search_page() -> None:
     response = client.get("/search")
 
     assert response.status_code == 200
-    assert "常规搜索框" in response.text
-    assert "结果列表" in response.text
-    assert "切换到入库" in response.text
+    assert 'name="drama-finder-route" content="search"' in response.text
 
 
 def test_ingest_page_is_separate() -> None:
     response = client.get("/ingest")
 
     assert response.status_code == 200
-    assert "入库任务" in response.text
-    assert "任务状态" in response.text
-    assert "图片向量" in response.text
-    assert "常规搜索框" not in response.text
+    assert 'name="drama-finder-route" content="ingest"' in response.text
+    assert 'window.__DRAMA_FINDER_PAGE__ = "ingest"' in response.text
+
+
+def test_ui_search_shell_is_available() -> None:
+    response = client.get("/ui/search")
+
+    assert response.status_code == 200
+    assert 'name="drama-finder-route" content="search"' in response.text
+
+
+def test_ui_ingest_shell_is_available() -> None:
+    response = client.get("/ui/ingest")
+
+    assert response.status_code == 200
+    assert 'name="drama-finder-route" content="ingest"' in response.text
 
 
 def test_demo_alias_keeps_working() -> None:
