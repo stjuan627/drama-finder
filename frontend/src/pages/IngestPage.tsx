@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Hero } from '../components/Hero';
 import { api } from '../api/api';
 import { EpisodeIngestStatus, IngestEpisodeState, IngestJobRead, ManifestSummary } from '../types/api';
 
@@ -38,11 +37,7 @@ function getEpisodeStateClassName(state: IngestEpisodeState): string {
   return 'bg-white/90 text-muted border-line';
 }
 
-interface IngestPageProps {
-  onNavigate: (page: 'search' | 'ingest') => void;
-}
-
-export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
+export const IngestPage: React.FC = () => {
   const [manifests, setManifests] = useState<ManifestSummary[]>([]);
   const [selectedManifestPath, setSelectedManifestPath] = useState('');
   const [episodes, setEpisodes] = useState<EpisodeIngestStatus[]>([]);
@@ -187,42 +182,13 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
     loadEpisodes(selectedManifestPath);
   }, [loadEpisodes, selectedManifestPath]);
 
-  const embeddingProgress = job?.artifacts?.embedding_progress || {};
-  const embeddingPending = embeddingProgress.pending ?? job?.artifacts?.pending_frame_embeddings ?? 0;
-  const embeddingProcessed = embeddingProgress.processed ?? 0;
-  const embeddingUpdated = embeddingProgress.updated ?? 0;
-  const embeddingFailed = embeddingProgress.failed ?? 0;
-  const embeddingRemaining = embeddingProgress.remaining ?? Math.max(embeddingPending - embeddingProcessed, 0);
+
 
   return (
-    <>
-      <Hero
-        eyebrow="Drama Finder / Ingest"
-        title="自动发现 manifest，然后按剧集状态提交入库。"
-        description="入库页会直接扫描系统里的 manifest，切换后列出当前 season 的 episodes，并用 frame 与最新任务状态判断已入库、未入库、进行中或失败。"
-        activePage="ingest"
-        onNavigate={onNavigate}
-      />
-
-      <section className="ingest-grid grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-[18px]">
+    <section className="ingest-grid grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-[18px]">
         <div className="stack grid gap-[18px]">
           <section className="panel grid gap-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="m-0 text-xl font-bold">Manifest 与集列表</h2>
-                <div className="mt-1 text-muted text-[13px] leading-relaxed font-sans">
-                  从仓库 `manifests/` 自动发现可用配置，切换后直接读取 manifest 与数据库现状，再展示每集当前入库状态。
-                </div>
-              </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => loadManifests(selectedManifestPath)}
-                disabled={loadingManifests || loadingEpisodes}
-              >
-                {loadingManifests ? '刷新中...' : '刷新 manifest'}
-              </button>
-            </div>
+
 
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
               <div>
@@ -249,15 +215,18 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
                 </select>
               </div>
 
-              {selectedManifest && (
-                <div className="rounded-[18px] border border-line bg-white/80 px-4 py-3 text-xs text-muted font-sans">
-                  共 {selectedManifest.episode_count} 集 · {selectedManifest.language}
-                </div>
-              )}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => loadManifests(selectedManifestPath)}
+                disabled={loadingManifests || loadingEpisodes}
+              >
+                {loadingManifests ? '刷新中...' : '刷新 manifest'}
+              </button>
             </div>
 
             {selectedManifest ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
                   <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">剧集</div>
                   <div className="mt-1 text-lg font-bold">{selectedManifest.series_title}</div>
@@ -272,10 +241,6 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
                   <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">已入库</div>
                   <div className="mt-1 text-lg font-bold">{episodeStats.ingested} / {episodeStats.total}</div>
                   <div className="mt-1 text-xs text-muted font-sans">进行中 {episodeStats.running + episodeStats.queued} · 失败 {episodeStats.failed}</div>
-                </div>
-                <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">Manifest 路径</div>
-                  <div className="mt-1 text-xs leading-relaxed text-muted font-sans break-all">{selectedManifest.manifest_path}</div>
                 </div>
               </div>
             ) : null}
@@ -295,11 +260,9 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-xs uppercase tracking-[0.14em] text-muted font-sans">
-                            EP {String(episode.episode_no).padStart(2, '0')} · {episode.episode_id}
+                          <div className="text-sm uppercase tracking-[0.14em] text-muted font-sans">
+                            <div>{episode.title} · {episode.episode_id}</div>
                           </div>
-                          <h3 className="m-0 mt-1 text-lg font-bold">{episode.title}</h3>
-                          <div className="mt-1 text-sm text-muted font-sans break-all">{episode.filename}</div>
                         </div>
                         <div className={`rounded-full border px-3 py-2 text-xs font-sans ${getEpisodeStateClassName(episode.ingest_state)}`}>
                           {getEpisodeStateLabel(episode.ingest_state)}
@@ -361,29 +324,32 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
           </section>
         </div>
 
-        <div className="stack grid gap-[18px]">
+        <div className="stack grid gap-[18px] lg:sticky lg:top-[90px] self-start">
           <section className="panel status-card grid gap-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
                 <h2 className="m-0 text-xl font-bold">任务状态</h2>
-                <div className="mt-1 text-muted text-[13px] leading-relaxed font-sans">
-                  当前仍沿用既有任务模型：提交单集，右侧查看最近一次 job 与 embedding 子进度。
-                </div>
+                {job?.id && (
+                  <span className="text-muted text-[11px] font-mono opacity-50 truncate max-w-[140px]" title={job.id || undefined}>
+                    {job.id}
+                  </span>
+                )}
               </div>
               <button
                 type="button"
-                className="secondary"
+                className="secondary w-9 h-9 p-0 flex items-center justify-center rounded-xl"
                 onClick={() => pollJob()}
                 disabled={loadingJob || !job?.id}
+                title="刷新状态"
               >
-                {loadingJob ? '刷新中...' : '刷新状态'}
+                <svg className={`w-4 h-4 ${loadingJob ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true" role="img">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </button>
             </div>
 
             <div className="status-strip flex flex-wrap gap-2.5">
-              <div className="pill px-3 py-2 rounded-full bg-white/90 border border-line text-xs font-sans">
-                Job ID：<span className="text-muted">{job?.id || '未提交'}</span>
-              </div>
+
               <div className="pill px-3 py-2 rounded-full bg-white/90 border border-line text-xs font-sans">
                 状态：<span className="text-muted">{job?.status || '-'}</span>
               </div>
@@ -398,9 +364,7 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            <div className="muted text-muted font-sans text-xs">
-              processed {embeddingProcessed} / {embeddingPending} · updated {embeddingUpdated} · failed {embeddingFailed} · remaining {embeddingRemaining}
-            </div>
+
 
             <div className="muted text-muted font-sans text-sm leading-relaxed">
               {error ? (
@@ -421,6 +385,5 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
           </section>
         </div>
       </section>
-    </>
   );
 };

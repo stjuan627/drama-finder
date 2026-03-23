@@ -55,7 +55,7 @@ function App() {
       {activePage === 'search' ? (
         <SearchPage />
       ) : (
-        <IngestPage onNavigate={handleNavigate} />
+        <IngestPage />
       )}
     </Layout>
   );
