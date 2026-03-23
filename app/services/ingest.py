@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -18,7 +18,12 @@ from app.models.frame import Frame
 from app.models.ingest_job import IngestJob
 from app.models.series import Series
 from app.models.shot import Shot
-from app.schemas.ingest import IngestEpisodeRequest
+from app.schemas.ingest import (
+    EpisodeIngestStatusRead,
+    IngestEpisodeRequest,
+    IngestEpisodeState,
+    ManifestSummaryRead,
+)
 from app.services.asr import ASRService
 from app.services.gemini import GeminiEmbeddingService
 from app.services.manifest import ManifestError, ManifestService
@@ -42,6 +47,7 @@ class IngestService:
             select(Episode)
             .join(Series, Series.id == Episode.series_pk)
             .where(Series.series_id == payload.series_id, Episode.episode_id == payload.episode_id)
+            .with_for_update()
         )
         if episode is None:
             raise ManifestError("series_id or episode_id not found in manifest")
@@ -75,6 +81,130 @@ class IngestService:
         db.commit()
         db.refresh(job)
         return job
+
+    def list_manifests(self) -> list[ManifestSummaryRead]:
+        manifests: list[ManifestSummaryRead] = []
+        manifest_root = settings.manifests_path
+        for extension in ("*.yaml", "*.yml", "*.json"):
+            for manifest_path in sorted(manifest_root.rglob(extension)):
+                try:
+                    manifest = self.manifest_service.load_manifest(manifest_path)
+                except ManifestError:
+                    continue
+
+                manifests.append(
+                    ManifestSummaryRead(
+                        manifest_path=str(manifest_path.resolve()),
+                        series_id=manifest.series_id,
+                        series_title=manifest.series_title,
+                        season_label=manifest.season_label,
+                        language=manifest.language,
+                        episode_count=len(manifest.episodes),
+                    )
+                )
+
+        manifests.sort(key=lambda item: (item.series_title, item.series_id, item.manifest_path))
+        return manifests
+
+    def list_manifest_episodes(
+        self,
+        db: Session,
+        manifest_path: str,
+    ) -> tuple[ManifestSummaryRead, list[EpisodeIngestStatusRead]]:
+        manifest = self.manifest_service.load_manifest(manifest_path)
+        summary = ManifestSummaryRead(
+            manifest_path=str(Path(manifest_path).expanduser().resolve()),
+            series_id=manifest.series_id,
+            series_title=manifest.series_title,
+            season_label=manifest.season_label,
+            language=manifest.language,
+            episode_count=len(manifest.episodes),
+        )
+
+        series = db.scalar(select(Series).where(Series.series_id == manifest.series_id))
+        stored_episodes_by_id: dict[str, Episode] = {}
+        frame_counts: dict[UUID, int] = {}
+        latest_jobs_by_episode_pk: dict[UUID, IngestJob] = {}
+
+        if series is not None:
+            stored_episodes = db.scalars(
+                select(Episode)
+                .where(Episode.series_pk == series.id)
+                .order_by(Episode.episode_no.asc(), Episode.episode_id.asc())
+            ).all()
+            stored_episodes_by_id = {episode.episode_id: episode for episode in stored_episodes}
+
+        if stored_episodes_by_id:
+            frame_counts = {
+                episode_pk: frame_count
+                for episode_pk, frame_count in db.execute(
+                    select(Frame.episode_pk, func.count(Frame.id))
+                    .where(
+                        Frame.episode_pk.in_(
+                            list(episode.id for episode in stored_episodes_by_id.values())
+                        )
+                    )
+                    .group_by(Frame.episode_pk)
+                ).all()
+            }
+            latest_jobs = db.scalars(
+                select(IngestJob)
+                .where(
+                    IngestJob.episode_pk.in_(
+                        list(episode.id for episode in stored_episodes_by_id.values())
+                    )
+                )
+                .order_by(IngestJob.episode_pk.asc(), IngestJob.created_at.desc())
+            ).all()
+            for latest_job in latest_jobs:
+                latest_jobs_by_episode_pk.setdefault(latest_job.episode_pk, latest_job)
+
+        items: list[EpisodeIngestStatusRead] = []
+        for manifest_episode in manifest.episodes:
+            stored_episode = stored_episodes_by_id.get(manifest_episode.episode_id)
+            latest_job = (
+                latest_jobs_by_episode_pk.get(stored_episode.id)
+                if stored_episode is not None
+                else None
+            )
+            frame_count = (
+                int(frame_counts.get(stored_episode.id, 0)) if stored_episode is not None else 0
+            )
+            ingest_state = self._resolve_episode_state(
+                frame_count=frame_count, latest_job=latest_job
+            )
+            items.append(
+                EpisodeIngestStatusRead(
+                    episode_id=manifest_episode.episode_id,
+                    episode_no=manifest_episode.episode_no,
+                    title=manifest_episode.title,
+                    filename=manifest_episode.filename,
+                    ingest_state=ingest_state,
+                    is_ingested=frame_count > 0,
+                    frame_count=frame_count,
+                    latest_job_id=latest_job.id if latest_job else None,
+                    latest_job_status=latest_job.status if latest_job else None,
+                    latest_job_stage=latest_job.current_stage if latest_job else None,
+                    latest_error_message=latest_job.error_message if latest_job else None,
+                    latest_finished_at=latest_job.finished_at if latest_job else None,
+                )
+            )
+
+        return summary, items
+
+    @staticmethod
+    def _resolve_episode_state(
+        frame_count: int, latest_job: IngestJob | None
+    ) -> IngestEpisodeState:
+        if latest_job and latest_job.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
+            if latest_job.status == JobStatus.QUEUED:
+                return "queued"
+            return "running"
+        if latest_job and latest_job.status == JobStatus.FAILED:
+            return "failed"
+        if frame_count > 0:
+            return "ingested"
+        return "not_ingested"
 
 
 class IngestPipeline:

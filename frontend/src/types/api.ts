@@ -1,5 +1,7 @@
 export type JobStatus = 'queued' | 'running' | 'failed' | 'completed';
 
+export type IngestEpisodeState = 'not_ingested' | 'ingested' | JobStatus;
+
 export type JobStage =
   | 'manifest'
   | 'audio_extraction'
@@ -37,6 +39,30 @@ export interface IngestEpisodeRequest {
   manifest_path: string;
   series_id: string;
   episode_id: string;
+}
+
+export interface ManifestSummary {
+  manifest_path: string;
+  series_id: string;
+  series_title: string;
+  season_label: string | null;
+  language: string;
+  episode_count: number;
+}
+
+export interface EpisodeIngestStatus {
+  episode_id: string;
+  episode_no: number;
+  title: string;
+  filename: string;
+  ingest_state: IngestEpisodeState;
+  is_ingested: boolean;
+  frame_count: number;
+  latest_job_id: string | null;
+  latest_job_status: JobStatus | null;
+  latest_job_stage: JobStage | null;
+  latest_error_message: string | null;
+  latest_finished_at: string | null;
 }
 
 export interface EmbeddingProgress {

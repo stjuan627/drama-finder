@@ -1,10 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Hero } from '../components/Hero';
 import { api } from '../api/api';
-import { IngestJobRead } from '../types/api';
+import { EpisodeIngestStatus, IngestEpisodeState, IngestJobRead, ManifestSummary } from '../types/api';
+
+const JOB_STORAGE_KEY = 'demo.jobId';
+const MANIFEST_STORAGE_KEY = 'ingest.manifestPath';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '任务操作失败，请稍后再试。';
+}
+
+function getEpisodeStateLabel(state: IngestEpisodeState): string {
+  switch (state) {
+    case 'queued':
+      return '排队中';
+    case 'running':
+      return '入库中';
+    case 'failed':
+      return '失败';
+    case 'ingested':
+      return '已入库';
+    default:
+      return '未入库';
+  }
+}
+
+function getEpisodeStateClassName(state: IngestEpisodeState): string {
+  if (state === 'ingested') {
+    return 'bg-[#edf8f1] text-success border-[rgba(47,125,87,0.16)]';
+  }
+  if (state === 'failed') {
+    return 'bg-[#fff0ec] text-danger border-[rgba(176,73,58,0.16)]';
+  }
+  if (state === 'queued' || state === 'running') {
+    return 'bg-[#fff7ea] text-accent border-[rgba(158,79,43,0.16)]';
+  }
+  return 'bg-white/90 text-muted border-line';
 }
 
 interface IngestPageProps {
@@ -12,30 +43,81 @@ interface IngestPageProps {
 }
 
 export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
-  const [manifestPath, setManifestPath] = useState('/tmp/wufulinmen-test-manifest.yaml');
-  const [seriesId, setSeriesId] = useState('wufulinmen');
-  const [episodeId, setEpisodeId] = useState('ep02');
+  const [manifests, setManifests] = useState<ManifestSummary[]>([]);
+  const [selectedManifestPath, setSelectedManifestPath] = useState('');
+  const [episodes, setEpisodes] = useState<EpisodeIngestStatus[]>([]);
   const [job, setJob] = useState<IngestJobRead | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingManifests, setLoadingManifests] = useState(false);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [loadingJob, setLoadingJob] = useState(false);
+  const [submittingEpisodeId, setSubmittingEpisodeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const episodeRequestIdRef = useRef(0);
 
-  const handleSubmit = async () => {
-    setLoading(true);
-    setError(null);
+  const selectedManifest = useMemo(
+    () => manifests.find((item) => item.manifest_path === selectedManifestPath) ?? null,
+    [manifests, selectedManifestPath],
+  );
+
+  const episodeStats = useMemo(() => {
+    const total = episodes.length;
+    const ingested = episodes.filter((episode) => episode.is_ingested).length;
+    const running = episodes.filter((episode) => episode.ingest_state === 'running').length;
+    const queued = episodes.filter((episode) => episode.ingest_state === 'queued').length;
+    const failed = episodes.filter((episode) => episode.ingest_state === 'failed').length;
+    return { total, ingested, running, queued, failed };
+  }, [episodes]);
+
+  const loadManifests = useCallback(async (preferredManifestPath?: string) => {
+    setLoadingManifests(true);
     try {
-      const data = await api.submitIngest({
-        manifest_path: manifestPath.trim(),
-        series_id: seriesId.trim(),
-        episode_id: episodeId.trim(),
-      });
-      setJob(data);
-      localStorage.setItem('demo.jobId', data.id);
-    } catch (error: unknown) {
-      setError(getErrorMessage(error));
+      const data = await api.getIngestManifests();
+      setManifests(data);
+
+      const savedManifestPath = localStorage.getItem(MANIFEST_STORAGE_KEY);
+      setSelectedManifestPath((currentManifestPath) => [preferredManifestPath, savedManifestPath, currentManifestPath]
+        .filter((value): value is string => Boolean(value))
+        .find((value) => data.some((item) => item.manifest_path === value))
+        ?? data[0]?.manifest_path
+        ?? '');
+    } catch (loadError: unknown) {
+      setError(getErrorMessage(loadError));
+      setManifests([]);
+      setSelectedManifestPath('');
     } finally {
-      setLoading(false);
+      setLoadingManifests(false);
     }
-  };
+  }, []);
+
+  const loadEpisodes = useCallback(async (manifestPath: string) => {
+    if (!manifestPath) {
+      episodeRequestIdRef.current += 1;
+      setLoadingEpisodes(false);
+      setEpisodes([]);
+      return;
+    }
+
+    const requestId = episodeRequestIdRef.current + 1;
+    episodeRequestIdRef.current = requestId;
+    setLoadingEpisodes(true);
+    try {
+      const data = await api.getManifestEpisodes(manifestPath);
+      if (episodeRequestIdRef.current !== requestId) {
+        return;
+      }
+      setEpisodes(data);
+      localStorage.setItem(MANIFEST_STORAGE_KEY, manifestPath);
+    } catch (loadError: unknown) {
+      if (episodeRequestIdRef.current !== requestId) {
+        return;
+      }
+      setError(getErrorMessage(loadError));
+    } finally {
+      if (episodeRequestIdRef.current === requestId) {
+        setLoadingEpisodes(false);
+      }
+    }
+  }, []);
 
   const pollJob = async (jobId?: string) => {
     const id = jobId || job?.id;
@@ -43,30 +125,67 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
       setError('请先提交一个任务。');
       return;
     }
-    setLoading(true);
+
+    setLoadingJob(true);
     setError(null);
     try {
       const data = await api.getIngestJob(id);
       setJob(data);
-    } catch (error: unknown) {
-      setError(getErrorMessage(error));
+      localStorage.setItem(JOB_STORAGE_KEY, data.id);
+      if (selectedManifestPath) {
+        await loadEpisodes(selectedManifestPath);
+      }
+    } catch (pollError: unknown) {
+      setError(getErrorMessage(pollError));
     } finally {
-      setLoading(false);
+      setLoadingJob(false);
+    }
+  };
+
+  const handleSubmitEpisode = async (episode: EpisodeIngestStatus) => {
+    if (!selectedManifest) {
+      setError('请先选择一个 manifest。');
+      return;
+    }
+
+    setSubmittingEpisodeId(episode.episode_id);
+    setError(null);
+    try {
+      const data = await api.submitIngest({
+        manifest_path: selectedManifest.manifest_path,
+        series_id: selectedManifest.series_id,
+        episode_id: episode.episode_id,
+      });
+      setJob(data);
+      localStorage.setItem(JOB_STORAGE_KEY, data.id);
+      await loadEpisodes(selectedManifest.manifest_path);
+    } catch (submitError: unknown) {
+      setError(getErrorMessage(submitError));
+    } finally {
+      setSubmittingEpisodeId(null);
     }
   };
 
   useEffect(() => {
-    const savedJobId = localStorage.getItem('demo.jobId');
+    loadManifests();
+
+    const savedJobId = localStorage.getItem(JOB_STORAGE_KEY);
     if (savedJobId) {
-      const id = savedJobId;
-      setLoading(true);
-      setError(null);
-      api.getIngestJob(id)
-        .then(data => setJob(data))
-        .catch((error: unknown) => setError(getErrorMessage(error)))
-        .finally(() => setLoading(false));
+      setLoadingJob(true);
+      api.getIngestJob(savedJobId)
+        .then((data) => setJob(data))
+        .catch((loadError: unknown) => setError(getErrorMessage(loadError)))
+        .finally(() => setLoadingJob(false));
     }
-  }, []);
+  }, [loadManifests]);
+
+  useEffect(() => {
+    if (!selectedManifestPath) {
+      setEpisodes([]);
+      return;
+    }
+    loadEpisodes(selectedManifestPath);
+  }, [loadEpisodes, selectedManifestPath]);
 
   const embeddingProgress = job?.artifacts?.embedding_progress || {};
   const embeddingPending = embeddingProgress.pending ?? job?.artifacts?.pending_frame_embeddings ?? 0;
@@ -79,72 +198,188 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
     <>
       <Hero
         eyebrow="Drama Finder / Ingest"
-        title="把入库流程收进独立页面，让检索入口保持轻量。"
-        description="这里保留提交单集任务与轮询任务状态的完整闭环。切换页面不会改变后端契约，仍然沿用现有入库 API 和任务状态结构。"
+        title="自动发现 manifest，然后按剧集状态提交入库。"
+        description="入库页会直接扫描系统里的 manifest，切换后列出当前 season 的 episodes，并用 frame 与最新任务状态判断已入库、未入库、进行中或失败。"
         activePage="ingest"
         onNavigate={onNavigate}
       />
 
-      <section className="ingest-grid grid grid-cols-1 lg:grid-cols-[1.08fr_0.92fr] gap-[18px]">
+      <section className="ingest-grid grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-[18px]">
         <div className="stack grid gap-[18px]">
-          <section className="panel">
-            <h2 className="m-0 mb-4 text-xl font-bold">入库任务</h2>
-            <div className="sub -mt-2 mb-[18px] text-muted text-[13px] leading-relaxed font-sans">
-              先提交 `manifest + series_id + episode_id`，再用右侧状态卡轮询任务进度。
-            </div>
-            <div className="field-grid grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label htmlFor="manifestPath" className="block mb-1.5 text-muted text-xs font-sans">Manifest 路径</label>
-                <input
-                  id="manifestPath"
-                  className="w-full"
-                  value={manifestPath}
-                  onChange={(e) => setManifestPath(e.target.value)}
-                />
-              </div>
+          <section className="panel grid gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <label htmlFor="seriesId" className="block mb-1.5 text-muted text-xs font-sans">Series ID</label>
-                <input
-                  id="seriesId"
-                  className="w-full"
-                  value={seriesId}
-                  onChange={(e) => setSeriesId(e.target.value)}
-                />
+                <h2 className="m-0 text-xl font-bold">Manifest 与集列表</h2>
+                <div className="mt-1 text-muted text-[13px] leading-relaxed font-sans">
+                  从仓库 `manifests/` 自动发现可用配置，切换后直接读取 manifest 与数据库现状，再展示每集当前入库状态。
+                </div>
               </div>
-              <div>
-                <label htmlFor="episodeId" className="block mb-1.5 text-muted text-xs font-sans">Episode ID</label>
-                <input
-                  id="episodeId"
-                  className="w-full"
-                  value={episodeId}
-                  onChange={(e) => setEpisodeId(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="actions flex gap-2.5 mt-3.5">
-              <button
-                type="button"
-                className="primary"
-                onClick={handleSubmit}
-                disabled={loading}
-              >
-                {loading ? '提交中...' : '提交入库'}
-              </button>
               <button
                 type="button"
                 className="secondary"
-                onClick={() => pollJob()}
-                disabled={loading}
+                onClick={() => loadManifests(selectedManifestPath)}
+                disabled={loadingManifests || loadingEpisodes}
               >
-                {loading ? '刷新中...' : '刷新状态'}
+                {loadingManifests ? '刷新中...' : '刷新 manifest'}
               </button>
             </div>
+
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div>
+                <label htmlFor="manifestSelect" className="block mb-1.5 text-muted text-xs font-sans">Manifest</label>
+                <select
+                  id="manifestSelect"
+                  className="w-full"
+                  value={selectedManifestPath}
+                  onChange={(event) => {
+                    setError(null);
+                    setSelectedManifestPath(event.target.value);
+                  }}
+                  disabled={loadingManifests || manifests.length === 0}
+                >
+                  {manifests.length === 0 ? (
+                    <option value="">当前未发现可用 manifest</option>
+                  ) : (
+                    manifests.map((manifest) => (
+                      <option key={manifest.manifest_path} value={manifest.manifest_path}>
+                        {manifest.series_title} · {manifest.series_id}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {selectedManifest && (
+                <div className="rounded-[18px] border border-line bg-white/80 px-4 py-3 text-xs text-muted font-sans">
+                  共 {selectedManifest.episode_count} 集 · {selectedManifest.language}
+                </div>
+              )}
+            </div>
+
+            {selectedManifest ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">剧集</div>
+                  <div className="mt-1 text-lg font-bold">{selectedManifest.series_title}</div>
+                  <div className="mt-1 text-xs text-muted font-sans">{selectedManifest.series_id}</div>
+                </div>
+                <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">Season</div>
+                  <div className="mt-1 text-lg font-bold">{selectedManifest.season_label || '未填写'}</div>
+                  <div className="mt-1 text-xs text-muted font-sans">路径已锁定到所选 manifest</div>
+                </div>
+                <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">已入库</div>
+                  <div className="mt-1 text-lg font-bold">{episodeStats.ingested} / {episodeStats.total}</div>
+                  <div className="mt-1 text-xs text-muted font-sans">进行中 {episodeStats.running + episodeStats.queued} · 失败 {episodeStats.failed}</div>
+                </div>
+                <div className="rounded-[18px] border border-line bg-white/72 px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted font-sans">Manifest 路径</div>
+                  <div className="mt-1 text-xs leading-relaxed text-muted font-sans break-all">{selectedManifest.manifest_path}</div>
+                </div>
+              </div>
+            ) : null}
+
+            {loadingEpisodes ? (
+              <div className="rounded-[20px] border border-line bg-white/70 px-5 py-8 text-center text-muted font-sans text-sm">
+                正在同步 manifest 并加载 episode 状态...
+              </div>
+            ) : episodes.length > 0 ? (
+              <div className="grid gap-3">
+                {episodes.map((episode) => {
+                  const isSubmitting = submittingEpisodeId === episode.episode_id;
+                  return (
+                    <article
+                      key={episode.episode_id}
+                      className="rounded-[22px] border border-line bg-panel-strong p-5 grid gap-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.14em] text-muted font-sans">
+                            EP {String(episode.episode_no).padStart(2, '0')} · {episode.episode_id}
+                          </div>
+                          <h3 className="m-0 mt-1 text-lg font-bold">{episode.title}</h3>
+                          <div className="mt-1 text-sm text-muted font-sans break-all">{episode.filename}</div>
+                        </div>
+                        <div className={`rounded-full border px-3 py-2 text-xs font-sans ${getEpisodeStateClassName(episode.ingest_state)}`}>
+                          {getEpisodeStateLabel(episode.ingest_state)}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-3 text-sm font-sans text-muted">
+                        <div className="rounded-2xl border border-line bg-white/70 px-3 py-2">
+                          frame 数：<span className="text-text font-semibold">{episode.frame_count}</span>
+                        </div>
+                        <div className="rounded-2xl border border-line bg-white/70 px-3 py-2">
+                          最近任务：<span className="text-text font-semibold">{episode.latest_job_status || '无'}</span>
+                        </div>
+                        <div className="rounded-2xl border border-line bg-white/70 px-3 py-2">
+                          阶段：<span className="text-text font-semibold">{episode.latest_job_stage || '-'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-xs text-muted font-sans leading-relaxed">
+                          {episode.latest_error_message
+                            ? `最近错误：${episode.latest_error_message}`
+                            : episode.latest_finished_at
+                              ? `最近完成时间：${new Date(episode.latest_finished_at).toLocaleString('zh-CN')}`
+                              : '尚未发现完成记录，可以直接发起入库。'}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {episode.latest_job_id ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => pollJob(episode.latest_job_id || undefined)}
+                              disabled={loadingJob}
+                            >
+                              查看最近任务
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={() => handleSubmitEpisode(episode)}
+                            disabled={Boolean(submittingEpisodeId) || loadingEpisodes || loadingManifests}
+                          >
+                            {isSubmitting ? '提交中...' : episode.is_ingested ? '重新入库' : '提交入库'}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[20px] border border-dashed border-line bg-white/65 px-5 py-8 text-center text-muted font-sans text-sm leading-relaxed">
+                {selectedManifestPath
+                  ? '当前 manifest 下没有可展示的 episode。若刚刚请求失败，请先看右侧错误提示后重试。'
+                  : '请先选择一个 manifest。'}
+              </div>
+            )}
           </section>
         </div>
 
         <div className="stack grid gap-[18px]">
           <section className="panel status-card grid gap-3">
-            <h2 className="m-0 mb-4 text-xl font-bold">任务状态</h2>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="m-0 text-xl font-bold">任务状态</h2>
+                <div className="mt-1 text-muted text-[13px] leading-relaxed font-sans">
+                  当前仍沿用既有任务模型：提交单集，右侧查看最近一次 job 与 embedding 子进度。
+                </div>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => pollJob()}
+                disabled={loadingJob || !job?.id}
+              >
+                {loadingJob ? '刷新中...' : '刷新状态'}
+              </button>
+            </div>
+
             <div className="status-strip flex flex-wrap gap-2.5">
               <div className="pill px-3 py-2 rounded-full bg-white/90 border border-line text-xs font-sans">
                 Job ID：<span className="text-muted">{job?.id || '未提交'}</span>
@@ -162,10 +397,12 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
                 图片向量：<span className="text-muted">{job?.artifacts?.embedding_status || '-'}</span>
               </div>
             </div>
+
             <div className="muted text-muted font-sans text-xs">
               processed {embeddingProcessed} / {embeddingPending} · updated {embeddingUpdated} · failed {embeddingFailed} · remaining {embeddingRemaining}
             </div>
-            <div className="muted text-muted font-sans text-sm">
+
+            <div className="muted text-muted font-sans text-sm leading-relaxed">
               {error ? (
                 <span className="text-danger">{error}</span>
               ) : job ? (
@@ -174,9 +411,10 @@ export const IngestPage: React.FC<IngestPageProps> = ({ onNavigate }) => {
                   {job.artifacts?.embedding_status && ` 图片向量状态：${job.artifacts.embedding_status}。`}
                 </span>
               ) : (
-                '提交任务后，这里会显示实时状态。'
+                '从左侧列表点击“提交入库”后，这里会显示最近一次任务状态。'
               )}
             </div>
+
             <div className="json-box mt-2">
               {JSON.stringify(job || {}, null, 2)}
             </div>

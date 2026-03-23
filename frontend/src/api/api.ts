@@ -1,6 +1,8 @@
 import {
+  EpisodeIngestStatus,
   IngestEpisodeRequest,
   IngestJobRead,
+  ManifestSummary,
   SearchResponse,
   SearchTextRequest,
 } from '../types/api';
@@ -59,6 +61,23 @@ export const api = {
     });
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, 'Ingest submission failed'));
+    }
+    return response.json();
+  },
+
+  async getIngestManifests(): Promise<ManifestSummary[]> {
+    const response = await fetch('/ingest/manifests');
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, 'Failed to fetch manifests'));
+    }
+    return response.json();
+  },
+
+  async getManifestEpisodes(manifestPath: string): Promise<EpisodeIngestStatus[]> {
+    const params = new URLSearchParams({ manifest_path: manifestPath });
+    const response = await fetch(`/ingest/manifest-episodes?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, 'Failed to fetch manifest episodes'));
     }
     return response.json();
   },

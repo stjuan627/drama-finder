@@ -53,11 +53,11 @@ body {
   @apply rounded-[18px] bg-[#2e1d12]/90 text-[#f5eee3] p-4 text-xs leading-relaxed overflow-auto whitespace-pre-wrap break-words font-mono;
 }
 
-input, textarea {
+input, textarea, select {
   @apply border border-line rounded-2xl bg-white/85 text-text px-4 py-3.5 outline-none transition-all duration-200 font-sans;
 }
 
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
   @apply border-accent/55 shadow-[0_0_0_4px_rgba(158,79,43,0.08)] -translate-y-px;
 }
 
